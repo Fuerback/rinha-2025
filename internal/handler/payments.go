@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Fuerback/rinha-2025/internal/domain"
+	"github.com/Fuerback/rinha-2025/internal/event"
 	"github.com/Fuerback/rinha-2025/internal/storage"
 	"github.com/labstack/echo/v4"
 	"github.com/shopspring/decimal"
@@ -38,9 +39,17 @@ func CreatePaymentHandler(store *storage.PaymentStore) echo.HandlerFunc {
 
 		err := store.CreatePayment(payment)
 		if err != nil {
+			if err == storage.ErrUniqueViolation {
+				return c.JSON(http.StatusAccepted, "Payment already exists")
+			}
 			c.Logger().Error("failed to create payment", "error", err)
 			return c.JSON(http.StatusInternalServerError, fmt.Errorf("failed to create payment: %w", err))
 		}
+
+		event.RabbitMQClient.SendPaymentEvent(domain.PaymentEvent{
+			CorrelationID: payment.CorrelationID,
+			Amount:        payment.Amount,
+		})
 
 		return c.JSON(http.StatusCreated, "Payment created")
 	}

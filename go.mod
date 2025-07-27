@@ -8,6 +8,8 @@ require (
 	github.com/shopspring/decimal v1.4.0
 )
 
+require github.com/rabbitmq/amqp091-go v1.10.0
+
 require (
 	github.com/joho/godotenv v1.5.1
 	github.com/labstack/gommon v0.4.2 // indirect

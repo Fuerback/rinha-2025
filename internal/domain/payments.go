@@ -16,6 +16,11 @@ type Payment struct {
 	UpdatedAt        time.Time
 }
 
+type PaymentEvent struct {
+	CorrelationID string
+	Amount        decimal.Decimal
+}
+
 type PaymentSummary struct {
 	Default  PaymentSummaryDetail
 	Fallback PaymentSummaryDetail

@@ -2,7 +2,7 @@ BEGIN;
 
 CREATE TABLE IF NOT EXISTS payments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    correlation_id UUID NOT NULL,
+    correlation_id UUID UNIQUE NOT NULL,
     amount INTEGER NOT NULL,
     payment_processor TEXT,
     status TEXT NOT NULL,

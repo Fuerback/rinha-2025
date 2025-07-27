@@ -2,12 +2,15 @@ package storage
 
 import (
 	"database/sql"
-	"fmt"
+	"errors"
 	"time"
 
 	"github.com/Fuerback/rinha-2025/internal/domain"
+	"github.com/lib/pq"
 	"github.com/shopspring/decimal"
 )
+
+var ErrUniqueViolation = errors.New("unique violation")
 
 type PaymentStore struct {
 	db *sql.DB
@@ -20,12 +23,16 @@ func NewPaymentStore(db *sql.DB) *PaymentStore {
 }
 
 func (s *PaymentStore) CreatePayment(payment *domain.Payment) error {
-	fmt.Println("Creating payment", payment)
 	_, err := s.db.Exec("INSERT INTO payments (correlation_id, amount, status, created_at, updated_at) VALUES ($1, $2, $3, $4, $5)", payment.CorrelationID, decimalToInt64(payment.Amount), payment.Status, time.Now(), time.Now())
 	if err != nil {
-		fmt.Println("Error creating payment", err)
+		if pgErr, ok := err.(*pq.Error); ok {
+			if pgErr.Code.Name() == "unique_violation" {
+				return ErrUniqueViolation
+			}
+		}
+		return err
 	}
-	return err
+	return nil
 }
 
 func (s *PaymentStore) FindPendingPayments() ([]domain.Payment, error) {
@@ -47,8 +54,8 @@ func (s *PaymentStore) FindPendingPayments() ([]domain.Payment, error) {
 	return payments, nil
 }
 
-func (s *PaymentStore) UpdatePaymentStatus(paymentID string, status domain.PaymentStatus) error {
-	_, err := s.db.Exec("UPDATE payments SET status = $1, updated_at = $2 WHERE id = $3", status, time.Now(), paymentID)
+func (s *PaymentStore) UpdatePaymentStatus(correlationID string, status domain.PaymentStatus, paymentProcessor domain.PaymentProcessor) error {
+	_, err := s.db.Exec("UPDATE payments SET status = $1, payment_processor = $2, updated_at = $3 WHERE correlation_id = $4", status, paymentProcessor, time.Now(), correlationID)
 	return err
 }
 
