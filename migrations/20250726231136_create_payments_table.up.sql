@@ -4,6 +4,8 @@ CREATE TABLE IF NOT EXISTS payments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     correlation_id UUID NOT NULL,
     amount INTEGER NOT NULL,
+    payment_processor TEXT NOT NULL,
+    status TEXT NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 );

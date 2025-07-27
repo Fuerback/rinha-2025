@@ -3,7 +3,11 @@ module github.com/Fuerback/rinha-2025
 go 1.24.0
 
 require (
-	github.com/labstack/echo/v4 v4.13.4 // indirect
+	github.com/labstack/echo/v4 v4.13.4
+	github.com/shopspring/decimal v1.4.0
+)
+
+require (
 	github.com/labstack/gommon v0.4.2 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
