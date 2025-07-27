@@ -1,13 +1,16 @@
 package main
 
 import (
+	"database/sql"
 	"errors"
 	"log/slog"
 	"net/http"
+	"os"
 
 	"github.com/Fuerback/rinha-2025/internal/handler"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	_ "github.com/lib/pq"
 )
 
 func main() {
@@ -23,12 +26,21 @@ func main() {
 	}))
 	e.Use(middleware.Recover())
 
+	// Initialize database connection
+	DB_URL := os.Getenv("DATABASE_URL")
+
+	db, err := sql.Open("postgres", DB_URL)
+	if err != nil {
+		e.Logger.Fatal("failed to connect to database", "error", err)
+	}
+	defer db.Close()
+
 	// Routes
 	e.POST("/payments", handler.CreatePaymentHandler())
 	e.GET("/payments-summary", handler.PaymentSummaryHandler())
 
 	// Start server
-	if err := e.Start(":8080"); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	if err := e.Start(":9999"); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		slog.Error("failed to start server", "error", err)
 	}
 }

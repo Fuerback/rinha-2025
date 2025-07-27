@@ -31,8 +31,6 @@ func CreatePaymentHandler() echo.HandlerFunc {
 			return err
 		}
 
-		fmt.Println(req)
-
 		return c.JSON(http.StatusCreated, "Payment created")
 	}
 }
