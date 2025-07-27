@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Fuerback/rinha-2025/internal/domain"
+	"github.com/Fuerback/rinha-2025/internal/storage"
 	"github.com/labstack/echo/v4"
 	"github.com/shopspring/decimal"
 )
@@ -20,47 +22,64 @@ type PaymentResponse struct {
 }
 
 type PaymentSummaryResponse struct {
-	TotalRequests int `json:"total_requests"`
-	TotalAmount   int `json:"total_amount"`
+	TotalRequests int             `json:"total_requests"`
+	TotalAmount   decimal.Decimal `json:"total_amount"`
 }
 
-func CreatePaymentHandler() echo.HandlerFunc {
+func CreatePaymentHandler(store *storage.PaymentStore) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		var req PaymentRequest
 		if err := c.Bind(&req); err != nil {
-			return err
+			c.Logger().Error("failed to bind request", "error", err)
+			return c.JSON(http.StatusBadRequest, fmt.Errorf("invalid request: %w", err))
+		}
+
+		payment := domain.NewPayment(req.CorrelationID, req.Amount)
+
+		err := store.CreatePayment(payment)
+		if err != nil {
+			c.Logger().Error("failed to create payment", "error", err)
+			return c.JSON(http.StatusInternalServerError, fmt.Errorf("failed to create payment: %w", err))
 		}
 
 		return c.JSON(http.StatusCreated, "Payment created")
 	}
 }
 
-func PaymentSummaryHandler() echo.HandlerFunc {
+func PaymentSummaryHandler(store *storage.PaymentStore) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		fromStr := c.QueryParam("from")
 		toStr := c.QueryParam("to")
 
 		from, err := time.Parse(time.RFC3339, fromStr)
 		if err != nil {
-			return c.JSON(http.StatusBadRequest, "invalid value for start date")
+			c.Logger().Error("failed to parse start date", "error", err)
+			return c.JSON(http.StatusBadRequest, fmt.Errorf("invalid value for start date: %w", err))
 		}
 
 		to, err := time.Parse(time.RFC3339, toStr)
 		if err != nil {
-			return c.JSON(http.StatusBadRequest, "invalid value for end date")
+			c.Logger().Error("failed to parse end date", "error", err)
+			return c.JSON(http.StatusBadRequest, fmt.Errorf("invalid value for end date: %w", err))
 		}
 
-		fmt.Println(from, to)
+		summary, err := store.GetPaymentSummary(from, to)
+		if err != nil {
+			c.Logger().Error("failed to get payment summary", "error", err)
+			return c.JSON(http.StatusInternalServerError, fmt.Errorf("failed to get payment summary: %w", err))
+		}
 
-		return c.JSON(http.StatusOK, PaymentResponse{
+		response := PaymentResponse{
 			Default: PaymentSummaryResponse{
-				TotalRequests: 2,
-				TotalAmount:   100,
+				TotalRequests: summary.Default.TotalRequests,
+				TotalAmount:   summary.Default.TotalAmount,
 			},
 			Fallback: PaymentSummaryResponse{
-				TotalRequests: 1,
-				TotalAmount:   50,
+				TotalRequests: summary.Fallback.TotalRequests,
+				TotalAmount:   summary.Fallback.TotalAmount,
 			},
-		})
+		}
+
+		return c.JSON(http.StatusOK, response)
 	}
 }

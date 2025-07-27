@@ -1,71 +1,71 @@
 version: '3.8'
 
 services:
-  app1: &app
-    build:
-      context: .
-      dockerfile: Dockerfile
-    hostname: app1
-    networks:
-      - backend
-      - payment-processor
-    ports:
-      - "8003:8080"
-    environment:
-      - APP_PORT=8080
-      - PROCESSOR_DEFAULT_URL=http://payment-processor-default:8080
-      - PROCESSOR_FALLBACK_URL=http://payment-processor-fallback:8080
-      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable
-      - USER=postgres
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=postgres
-    depends_on:
-      postgres:
-        condition: service_healthy
-    volumes:
-      - rinha-store:/data
-    deploy:
-      resources:
-        limits:
-          cpus: "0.65"
-          memory: "140MB"
+  # app1: &app
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   hostname: app1
+  #   networks:
+  #     - backend
+  #     - payment-processor
+  #   ports:
+  #     - "8003:8080"
+  #   environment:
+  #     - APP_PORT=8080
+  #     - PROCESSOR_DEFAULT_URL=http://payment-processor-default:8080
+  #     - PROCESSOR_FALLBACK_URL=http://payment-processor-fallback:8080
+  #     - DATABASE_URL=postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable
+  #     - USER=postgres
+  #     - POSTGRES_HOST=postgres
+  #     - POSTGRES_PORT=5432
+  #     - POSTGRES_USER=postgres
+  #     - POSTGRES_PASSWORD=postgres
+  #     - POSTGRES_DB=postgres
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   volumes:
+  #     - rinha-store:/data
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: "0.65"
+  #         memory: "140MB"
 
-  app2:
-    <<: *app
-    hostname: app2
-    ports:
-      - "8004:8080"
-    environment:
-      - APP_PORT=8080
-      - PROCESSOR_DEFAULT_URL=http://payment-processor-default:8080
-      - PROCESSOR_FALLBACK_URL=http://payment-processor-fallback:8080
-      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable
-      - USER=postgres
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=postgres
+  # app2:
+  #   <<: *app
+  #   hostname: app2
+  #   ports:
+  #     - "8004:8080"
+  #   environment:
+  #     - APP_PORT=8080
+  #     - PROCESSOR_DEFAULT_URL=http://payment-processor-default:8080
+  #     - PROCESSOR_FALLBACK_URL=http://payment-processor-fallback:8080
+  #     - DATABASE_URL=postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable
+  #     - USER=postgres
+  #     - POSTGRES_HOST=postgres
+  #     - POSTGRES_PORT=5432
+  #     - POSTGRES_USER=postgres
+  #     - POSTGRES_PASSWORD=postgres
+  #     - POSTGRES_DB=postgres
 
-  nginx:
-    image: nginx:latest
-    ports:
-      - "9999:9999"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf
-    networks:
-      - backend
-    depends_on:
-      - app1
-      - app2
-    deploy:
-      resources:
-        limits:
-          cpus: "0.20"
-          memory: "70MB"
+  # nginx:
+  #   image: nginx:latest
+  #   ports:
+  #     - "9999:9999"
+  #   volumes:
+  #     - ./nginx.conf:/etc/nginx/nginx.conf
+  #   networks:
+  #     - backend
+  #   depends_on:
+  #     - app1
+  #     - app2
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: "0.20"
+  #         memory: "70MB"
 
   postgres:
     image: postgres:15-alpine

@@ -8,6 +8,8 @@ import (
 	"os"
 
 	"github.com/Fuerback/rinha-2025/internal/handler"
+	"github.com/Fuerback/rinha-2025/internal/storage"
+	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	_ "github.com/lib/pq"
@@ -17,17 +19,17 @@ func main() {
 	// Echo instance
 	e := echo.New()
 
+	_ = godotenv.Load()
+
 	// Middleware
-	e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
-		Format: `{"time":"${time_rfc3339_nano}","id":"${id}",` +
-			`"host":"${host}","method":"${method}","uri":"${uri}",` +
-			`"status":${status},"error":"${error}","latency":${latency},"latency_human":"${latency_human}"` +
-			`,"bytes_in":${bytes_in},"bytes_out":${bytes_out}}` + "\n",
-	}))
+	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 
 	// Initialize database connection
 	DB_URL := os.Getenv("DATABASE_URL")
+	if DB_URL == "" {
+		e.Logger.Fatal("DATABASE_URL is not set")
+	}
 
 	db, err := sql.Open("postgres", DB_URL)
 	if err != nil {
@@ -35,9 +37,11 @@ func main() {
 	}
 	defer db.Close()
 
+	store := storage.NewPaymentStore(db)
+
 	// Routes
-	e.POST("/payments", handler.CreatePaymentHandler())
-	e.GET("/payments-summary", handler.PaymentSummaryHandler())
+	e.POST("/payments", handler.CreatePaymentHandler(store))
+	e.GET("/payments-summary", handler.PaymentSummaryHandler(store))
 
 	// Start server
 	if err := e.Start(":9999"); err != nil && !errors.Is(err, http.ErrServerClosed) {
