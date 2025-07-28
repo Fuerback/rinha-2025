@@ -13,7 +13,7 @@ import (
 )
 
 type PaymentRequest struct {
-	CorrelationID string          `json:"correlation_id"`
+	CorrelationID string          `json:"correlationId"`
 	Amount        decimal.Decimal `json:"amount"`
 }
 
@@ -23,8 +23,8 @@ type PaymentResponse struct {
 }
 
 type PaymentSummaryResponse struct {
-	TotalRequests int             `json:"total_requests"`
-	TotalAmount   decimal.Decimal `json:"total_amount"`
+	TotalRequests int             `json:"totalRequests"`
+	TotalAmount   decimal.Decimal `json:"totalAmount"`
 }
 
 func CreatePaymentHandler(store *storage.PaymentStore) echo.HandlerFunc {

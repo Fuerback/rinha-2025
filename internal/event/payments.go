@@ -12,30 +12,16 @@ import (
 const PaymentEventQueue = "payment_event"
 
 func (r *RabbitMQ) SendPaymentEvent(paymentEvent domain.PaymentEvent) error {
-
-	q, err := r.Channel.QueueDeclare(
-		PaymentEventQueue, // queue name
-		true,              // durable
-		false,             // delete when unused
-		false,             // exclusive
-		false,             // no-wait
-		nil,               // arguments
-	)
-
-	if err != nil {
-		log.Fatalf("Failed to declare a queue: %s", err)
-	}
-
 	body, err := json.Marshal(paymentEvent)
 	if err != nil {
 		return fmt.Errorf("failed to marshal message: %v", err)
 	}
 
 	err = r.Channel.Publish(
-		"",     // exchange
-		q.Name, // routing key (queue name)
-		false,  // mandatory
-		false,  // immediate
+		"",                // exchange
+		PaymentEventQueue, // routing key (queue name)
+		false,             // mandatory
+		false,             // immediate
 		amqp.Publishing{
 			ContentType: "application/json",
 			Body:        body,
@@ -51,26 +37,14 @@ func (r *RabbitMQ) SendPaymentEvent(paymentEvent domain.PaymentEvent) error {
 }
 
 func (r *RabbitMQ) ConsumePaymentEvent() (<-chan amqp.Delivery, error) {
-	q, err := r.Channel.QueueDeclare(
-		PaymentEventQueue, // queue name
-		true,              // durable
-		false,             // delete when unused
-		false,             // exclusive
-		false,             // no-wait
-		nil,               // arguments
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to declare a queue: %v", err)
-	}
-
 	msgs, err := r.Channel.Consume(
-		q.Name, // queue name
-		"",     // consumer
-		true,   // auto-ack
-		false,  // exclusive
-		false,  // no-local
-		false,  // no-wait
-		nil,    // args
+		PaymentEventQueue, // queue name
+		"",                // consumer
+		true,              // auto-ack
+		false,             // exclusive
+		false,             // no-local
+		false,             // no-wait
+		nil,               // args
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to register a consumer: %v", err)
