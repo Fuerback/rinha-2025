@@ -35,21 +35,15 @@ func CreatePaymentHandler(store *storage.PaymentStore) echo.HandlerFunc {
 			return c.JSON(http.StatusBadRequest, fmt.Errorf("invalid request: %w", err))
 		}
 
-		payment := domain.NewPayment(req.CorrelationID, req.Amount)
-
-		err := store.CreatePayment(payment)
-		if err != nil {
-			if err == storage.ErrUniqueViolation {
-				return c.JSON(http.StatusAccepted, "Payment already exists")
+		go func() {
+			if err := event.RabbitMQClient.SendPaymentEvent(domain.PaymentEvent{
+				CorrelationID: req.CorrelationID,
+				Amount:        req.Amount,
+			}); err != nil {
+				// Log error but don't fail the request
+				c.Logger().Error("failed to send payment event", "error", err, "correlationId", req.CorrelationID)
 			}
-			c.Logger().Error("failed to create payment", "error", err)
-			return c.JSON(http.StatusInternalServerError, fmt.Errorf("failed to create payment: %w", err))
-		}
-
-		event.RabbitMQClient.SendPaymentEvent(domain.PaymentEvent{
-			CorrelationID: payment.CorrelationID,
-			Amount:        payment.Amount,
-		})
+		}()
 
 		return c.JSON(http.StatusCreated, "Payment created")
 	}

@@ -23,7 +23,7 @@ func NewPaymentStore(db *sql.DB) *PaymentStore {
 }
 
 func (s *PaymentStore) CreatePayment(payment *domain.Payment) error {
-	_, err := s.db.Exec("INSERT INTO payments (correlation_id, amount, status, created_at, updated_at) VALUES ($1, $2, $3, $4, $5)", payment.CorrelationID, decimalToInt64(payment.Amount), payment.Status, time.Now(), time.Now())
+	_, err := s.db.Exec("INSERT INTO payments (correlation_id, amount, status, payment_processor, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)", payment.CorrelationID, decimalToInt64(payment.Amount), payment.Status, payment.PaymentProcessor, time.Now(), time.Now())
 	if err != nil {
 		if pgErr, ok := err.(*pq.Error); ok {
 			if pgErr.Code.Name() == "unique_violation" {

@@ -46,11 +46,12 @@ const (
 	PaymentStatusFailed  PaymentStatus = "failed"
 )
 
-func NewPayment(correlationID string, amount decimal.Decimal) *Payment {
+func NewPayment(correlationID string, amount decimal.Decimal, paymentProcessor PaymentProcessor) *Payment {
 	return &Payment{
-		CorrelationID: correlationID,
-		Amount:        amount,
-		Status:        PaymentStatusPending,
+		CorrelationID:    correlationID,
+		Amount:           amount,
+		Status:           PaymentStatusSuccess,
+		PaymentProcessor: paymentProcessor,
 	}
 }
 

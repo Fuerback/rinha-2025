@@ -31,43 +31,52 @@ func PaymentProcessor(store *storage.PaymentStore) {
 
 	forever := make(chan bool)
 
-	go func() {
-		for d := range msgs {
-			var paymentEvent domain.PaymentEvent
-			err := json.Unmarshal(d.Body, &paymentEvent)
-			if err != nil {
-				log.Printf("Error reading payment event (please check the JSON format): %s", err)
-				continue
-			}
+	const workerCount = 15
 
-			fmt.Printf("Received a payment event: Correlation ID = %s, Amount = %s\n", paymentEvent.CorrelationID, paymentEvent.Amount)
-
-			body := requestBody{
-				CorrelationID: paymentEvent.CorrelationID,
-				Amount:        paymentEvent.Amount.String(),
-				RequestedAt:   time.Now(),
-			}
-
-			paymentProcessor := domain.PaymentProcessorDefault
-			err = tryProcessor(os.Getenv("PROCESSOR_DEFAULT_URL"), body, 100*time.Millisecond)
-			if err != nil {
-				fmt.Printf("Error processing payment with default processor: %s", err)
-				paymentProcessor = domain.PaymentProcessorFallback
-				err = tryProcessor(os.Getenv("PROCESSOR_FALLBACK_URL"), body, 100*time.Millisecond)
+	for i := range workerCount {
+		go func(id int) {
+			for d := range msgs {
+				var paymentEvent domain.PaymentEvent
+				err := json.Unmarshal(d.Body, &paymentEvent)
 				if err != nil {
-					fmt.Printf("Error processing payment with fallback processor: %s", err)
-					event.RabbitMQClient.SendPaymentEvent(domain.PaymentEvent{
-						CorrelationID: paymentEvent.CorrelationID,
-						Amount:        paymentEvent.Amount,
-					})
+					log.Printf("Error reading payment event (please check the JSON format): %s", err)
+					continue
+				}
+
+				fmt.Printf("Received a payment event: Correlation ID = %s, Amount = %s\n", paymentEvent.CorrelationID, paymentEvent.Amount)
+
+				body := requestBody{
+					CorrelationID: paymentEvent.CorrelationID,
+					Amount:        paymentEvent.Amount.String(),
+					RequestedAt:   time.Now(),
+				}
+
+				paymentProcessor := domain.PaymentProcessorDefault
+				err = tryProcessor(os.Getenv("PROCESSOR_DEFAULT_URL"), body, 50*time.Millisecond)
+				if err != nil {
+					fmt.Printf("Error processing payment with default processor: %s", err)
+					paymentProcessor = domain.PaymentProcessorFallback
+					err = tryProcessor(os.Getenv("PROCESSOR_FALLBACK_URL"), body, 50*time.Millisecond)
+					if err != nil {
+						fmt.Printf("Error processing payment with fallback processor: %s", err)
+						continue
+					}
+				}
+
+				fmt.Printf("Payment processed successfully with %s processor\n", paymentProcessor)
+
+				err = store.CreatePayment(domain.NewPayment(paymentEvent.CorrelationID, paymentEvent.Amount, paymentProcessor))
+				if err != nil {
+					if err == storage.ErrUniqueViolation {
+						fmt.Println("Payment already exists")
+						continue
+					}
+					fmt.Printf("failed to create payment: %s", err)
 					continue
 				}
 			}
-
-			fmt.Printf("Payment processed successfully with %s processor\n", paymentProcessor)
-			store.UpdatePaymentStatus(paymentEvent.CorrelationID, domain.PaymentStatusSuccess, paymentProcessor)
-		}
-	}()
+		}(i)
+	}
 
 	<-forever
 }

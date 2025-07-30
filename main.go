@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/Fuerback/rinha-2025/internal/event"
 	"github.com/Fuerback/rinha-2025/internal/handler"
@@ -42,6 +43,15 @@ func main() {
 		e.Logger.Fatal("failed to connect to database", "error", err)
 	}
 	defer db.Close()
+
+	db.SetMaxOpenConns(100)
+	db.SetMaxIdleConns(10)
+	db.SetConnMaxLifetime(time.Hour)
+	db.SetConnMaxIdleTime(time.Minute * 5)
+
+	if err := db.Ping(); err != nil {
+		e.Logger.Fatal("failed to ping database", "error", err)
+	}
 
 	store := storage.NewPaymentStore(db)
 
