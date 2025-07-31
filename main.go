@@ -51,14 +51,14 @@ func main() {
 
 	paymentStorage := storage.NewPaymentStorage(db)
 
-	worker := worker.NewPaymentProcessor(paymentStorage)
-	worker.Init()
+	// worker := worker.NewPaymentProcessor(paymentStorage)
+	// worker.Init()
 
-	app.Post("/payments", handler.CreatePaymentHandler(paymentStorage, worker))
+	app.Post("/payments", handler.CreatePaymentHandler(paymentStorage))
 	app.Get("/payments-summary", handler.PaymentSummaryHandler(paymentStorage))
 
 	// Payment Processor
-	//go worker.PaymentProcessor(paymentStorage)
+	go worker.PaymentProcessor(paymentStorage)
 
 	if err := app.Listen(":9999"); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		slog.Error("failed to start server", "error", err)

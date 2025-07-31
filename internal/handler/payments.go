@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/Fuerback/rinha-2025/internal/domain"
+	"github.com/Fuerback/rinha-2025/internal/event"
 	"github.com/Fuerback/rinha-2025/internal/storage"
-	"github.com/Fuerback/rinha-2025/internal/worker"
 	"github.com/gofiber/fiber/v3"
 	"github.com/shopspring/decimal"
 )
@@ -27,7 +27,7 @@ type PaymentSummaryResponse struct {
 	TotalAmount   decimal.Decimal `json:"totalAmount"`
 }
 
-func CreatePaymentHandler(store *storage.PaymentStore, worker *worker.PaymentProcessorChan) fiber.Handler {
+func CreatePaymentHandler(store *storage.PaymentStore) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		var req PaymentRequest
 		if err := c.Bind().Body(&req); err != nil {
@@ -37,26 +37,26 @@ func CreatePaymentHandler(store *storage.PaymentStore, worker *worker.PaymentPro
 			})
 		}
 
-		// if err := event.RabbitMQClient.SendPaymentEvent(domain.PaymentEvent{
-		// 	CorrelationID: req.CorrelationID,
-		// 	Amount:        req.Amount,
-		// 	RequestedAt:   time.Now(),
-		// }); err != nil {
-		// 	return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
-		// 		"error": "failed to send payment event",
-		// 	})
-		// }
-
-		err := worker.AddPayment(domain.PaymentEvent{
+		if err := event.RabbitMQClient.SendPaymentEvent(domain.PaymentEvent{
 			CorrelationID: req.CorrelationID,
 			Amount:        req.Amount,
 			RequestedAt:   time.Now(),
-		})
-		if err != nil {
+		}); err != nil {
 			return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
-				"error": "failed to add payment event to processor channel",
+				"error": "failed to send payment event",
 			})
 		}
+
+		// err := worker.AddPayment(domain.PaymentEvent{
+		// 	CorrelationID: req.CorrelationID,
+		// 	Amount:        req.Amount,
+		// 	RequestedAt:   time.Now(),
+		// })
+		// if err != nil {
+		// 	return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
+		// 		"error": "failed to add payment event to processor channel",
+		// 	})
+		// }
 
 		return c.Status(http.StatusCreated).JSON(fiber.Map{
 			"message": "Payment created",
