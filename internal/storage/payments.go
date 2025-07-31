@@ -23,7 +23,7 @@ func NewPaymentStorage(db *sql.DB) *PaymentStore {
 }
 
 func (s *PaymentStore) CreatePayment(payment *domain.Payment) error {
-	_, err := s.db.Exec("INSERT INTO payments (correlation_id, amount, payment_processor, created_at, updated_at) VALUES ($1, $2, $3, $4, $5)", payment.CorrelationID, decimalToInt64(payment.Amount), payment.PaymentProcessor, payment.CreatedAt, time.Now())
+	_, err := s.db.Exec("INSERT INTO payments (correlation_id, amount, payment_processor, requested_at) VALUES ($1, $2, $3, $4)", payment.CorrelationID, decimalToInt64(payment.Amount), payment.PaymentProcessor, payment.RequestedAt)
 	if err != nil {
 		if pgErr, ok := err.(*pq.Error); ok {
 			if pgErr.Code.Name() == "unique_violation" {
@@ -36,7 +36,7 @@ func (s *PaymentStore) CreatePayment(payment *domain.Payment) error {
 }
 
 func (s *PaymentStore) GetPaymentSummary(from time.Time, to time.Time) (domain.PaymentSummary, error) {
-	rows, err := s.db.Query("SELECT * FROM payments WHERE created_at >= $1 AND created_at <= $2", from, to)
+	rows, err := s.db.Query("SELECT * FROM payments WHERE requested_at >= $1 AND requested_at <= $2", from, to)
 	if err != nil {
 		return domain.PaymentSummary{}, err
 	}
@@ -45,7 +45,7 @@ func (s *PaymentStore) GetPaymentSummary(from time.Time, to time.Time) (domain.P
 	var payments []domain.Payment
 	for rows.Next() {
 		payment := domain.Payment{}
-		if err := rows.Scan(&payment.ID, &payment.CorrelationID, &payment.Amount, &payment.PaymentProcessor, &payment.CreatedAt, &payment.UpdatedAt); err != nil {
+		if err := rows.Scan(&payment.CorrelationID, &payment.Amount, &payment.PaymentProcessor, &payment.RequestedAt); err != nil {
 			return domain.PaymentSummary{}, err
 		}
 		payment.Amount = int64ToDecimal(payment.Amount.IntPart())

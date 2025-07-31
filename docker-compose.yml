@@ -81,7 +81,7 @@ services:
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=postgres
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - backend
     healthcheck:
@@ -94,20 +94,6 @@ services:
         limits:
           cpus: "0.2"
           memory: "90MB"
-
-  migrate:
-    image: migrate/migrate
-    volumes:
-      - ./migrations:/migrations
-    dns:
-      - 8.8.8.8
-      - 8.8.4.4
-    networks:
-      - backend
-    command: ["-path", "migrations", "-database", "postgresql://postgres:postgres@postgres:5432/postgres?sslmode=disable", "up"]
-    depends_on:
-      postgres:
-        condition: service_healthy
 
   rabbitmq:
     image: rabbitmq:3-management

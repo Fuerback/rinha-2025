@@ -7,12 +7,10 @@ import (
 )
 
 type Payment struct {
-	ID               string
 	CorrelationID    string
 	Amount           decimal.Decimal
 	PaymentProcessor PaymentProcessor
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	RequestedAt      time.Time
 }
 
 type PaymentEvent struct {
@@ -39,11 +37,11 @@ const (
 	PaymentProcessorFallback PaymentProcessor = "fallback"
 )
 
-func NewPayment(correlationID string, amount decimal.Decimal, createdAt time.Time, paymentProcessor PaymentProcessor) *Payment {
+func NewPayment(correlationID string, amount decimal.Decimal, requestedAt time.Time, paymentProcessor PaymentProcessor) *Payment {
 	return &Payment{
 		CorrelationID:    correlationID,
 		Amount:           amount,
 		PaymentProcessor: paymentProcessor,
-		CreatedAt:        createdAt,
+		RequestedAt:      requestedAt,
 	}
 }

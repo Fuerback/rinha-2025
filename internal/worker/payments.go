@@ -102,7 +102,7 @@ func tryProcessor(url string, body requestBody, timeout time.Duration) error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
+	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("processor returned non-OK status: %d", resp.StatusCode)
 	}
 
