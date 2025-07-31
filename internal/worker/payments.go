@@ -115,7 +115,8 @@ func addPaymentToRetry(paymentEvent domain.PaymentEvent, err error) error {
 
 		log.Default().Printf("enqueue to retry payment with id %s numRetry %d: %v", paymentEvent.CorrelationID, paymentEvent.RetryCount, err)
 
-		time.Sleep(100 * time.Millisecond)
+		// TODO: no retry delay?
+		time.Sleep(20 * time.Millisecond)
 
 		err = event.RabbitMQClient.SendPaymentEvent(paymentEvent)
 		if err != nil {
