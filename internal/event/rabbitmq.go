@@ -37,6 +37,18 @@ func NewRabbitMQConnection() {
 		log.Fatalf("Failed to declare a queue: %s", err)
 	}
 
+	_, err = ch.QueueDeclare(
+		PaymentEventRetryQueue, // queue name
+		true,                   // durable
+		false,                  // delete when unused
+		false,                  // exclusive
+		false,                  // no-wait
+		nil,                    // arguments
+	)
+	if err != nil {
+		log.Fatalf("Failed to declare a retry queue: %s", err)
+	}
+
 	RabbitMQClient = &RabbitMQ{
 		Conn:    conn,
 		Channel: ch,
