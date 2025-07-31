@@ -1,14 +1,14 @@
 package handler
 
 import (
-	"fmt"
+	"log"
 	"net/http"
 	"time"
 
 	"github.com/Fuerback/rinha-2025/internal/domain"
-	"github.com/Fuerback/rinha-2025/internal/event"
 	"github.com/Fuerback/rinha-2025/internal/storage"
-	"github.com/labstack/echo/v4"
+	"github.com/Fuerback/rinha-2025/internal/worker"
+	"github.com/gofiber/fiber/v3"
 	"github.com/shopspring/decimal"
 )
 
@@ -27,49 +27,70 @@ type PaymentSummaryResponse struct {
 	TotalAmount   decimal.Decimal `json:"totalAmount"`
 }
 
-func CreatePaymentHandler(store *storage.PaymentStore) echo.HandlerFunc {
-	return func(c echo.Context) error {
+func CreatePaymentHandler(store *storage.PaymentStore, worker *worker.PaymentProcessorChan) fiber.Handler {
+	return func(c fiber.Ctx) error {
 		var req PaymentRequest
-		if err := c.Bind(&req); err != nil {
-			c.Logger().Error("failed to bind request", "error", err)
-			return c.JSON(http.StatusBadRequest, fmt.Errorf("invalid request: %w", err))
+		if err := c.Bind().Body(&req); err != nil {
+			log.Printf("failed to bind request: %s", err)
+			return c.Status(http.StatusBadRequest).JSON(fiber.Map{
+				"error": "failed to bind request",
+			})
 		}
 
-		go func() {
-			if err := event.RabbitMQClient.SendPaymentEvent(domain.PaymentEvent{
-				CorrelationID: req.CorrelationID,
-				Amount:        req.Amount,
-			}); err != nil {
-				// Log error but don't fail the request
-				c.Logger().Error("failed to send payment event", "error", err, "correlationId", req.CorrelationID)
-			}
-		}()
+		// if err := event.RabbitMQClient.SendPaymentEvent(domain.PaymentEvent{
+		// 	CorrelationID: req.CorrelationID,
+		// 	Amount:        req.Amount,
+		// 	RequestedAt:   time.Now(),
+		// }); err != nil {
+		// 	return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
+		// 		"error": "failed to send payment event",
+		// 	})
+		// }
 
-		return c.JSON(http.StatusCreated, "Payment created")
+		err := worker.AddPayment(domain.PaymentEvent{
+			CorrelationID: req.CorrelationID,
+			Amount:        req.Amount,
+			RequestedAt:   time.Now(),
+		})
+		if err != nil {
+			return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
+				"error": "failed to add payment event to processor channel",
+			})
+		}
+
+		return c.Status(http.StatusCreated).JSON(fiber.Map{
+			"message": "Payment created",
+		})
 	}
 }
 
-func PaymentSummaryHandler(store *storage.PaymentStore) echo.HandlerFunc {
-	return func(c echo.Context) error {
-		fromStr := c.QueryParam("from")
-		toStr := c.QueryParam("to")
+func PaymentSummaryHandler(store *storage.PaymentStore) fiber.Handler {
+	return func(c fiber.Ctx) error {
+		fromStr := c.Query("from")
+		toStr := c.Query("to")
 
 		from, err := time.Parse(time.RFC3339, fromStr)
 		if err != nil {
-			c.Logger().Error("failed to parse start date", "error", err)
-			return c.JSON(http.StatusBadRequest, fmt.Errorf("invalid value for start date: %w", err))
+			log.Printf("failed to parse start date: %s", err)
+			return c.Status(http.StatusBadRequest).JSON(fiber.Map{
+				"error": "failed to parse start date",
+			})
 		}
 
 		to, err := time.Parse(time.RFC3339, toStr)
 		if err != nil {
-			c.Logger().Error("failed to parse end date", "error", err)
-			return c.JSON(http.StatusBadRequest, fmt.Errorf("invalid value for end date: %w", err))
+			log.Printf("failed to parse end date: %s", err)
+			return c.Status(http.StatusBadRequest).JSON(fiber.Map{
+				"error": "failed to parse end date",
+			})
 		}
 
 		summary, err := store.GetPaymentSummary(from, to)
 		if err != nil {
-			c.Logger().Error("failed to get payment summary", "error", err)
-			return c.JSON(http.StatusInternalServerError, fmt.Errorf("failed to get payment summary: %w", err))
+			log.Printf("failed to get payment summary: %s", err)
+			return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
+				"error": "failed to get payment summary",
+			})
 		}
 
 		response := PaymentResponse{
@@ -83,6 +104,6 @@ func PaymentSummaryHandler(store *storage.PaymentStore) echo.HandlerFunc {
 			},
 		}
 
-		return c.JSON(http.StatusOK, response)
+		return c.Status(http.StatusOK).JSON(response)
 	}
 }

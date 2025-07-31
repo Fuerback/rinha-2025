@@ -18,6 +18,8 @@ type Payment struct {
 type PaymentEvent struct {
 	CorrelationID string
 	Amount        decimal.Decimal
+	RequestedAt   time.Time
+	RetryCount    uint
 }
 
 type PaymentSummary struct {
@@ -37,10 +39,11 @@ const (
 	PaymentProcessorFallback PaymentProcessor = "fallback"
 )
 
-func NewPayment(correlationID string, amount decimal.Decimal, paymentProcessor PaymentProcessor) *Payment {
+func NewPayment(correlationID string, amount decimal.Decimal, createdAt time.Time, paymentProcessor PaymentProcessor) *Payment {
 	return &Payment{
 		CorrelationID:    correlationID,
 		Amount:           amount,
 		PaymentProcessor: paymentProcessor,
+		CreatedAt:        createdAt,
 	}
 }

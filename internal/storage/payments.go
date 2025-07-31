@@ -16,14 +16,14 @@ type PaymentStore struct {
 	db *sql.DB
 }
 
-func NewPaymentStore(db *sql.DB) *PaymentStore {
+func NewPaymentStorage(db *sql.DB) *PaymentStore {
 	return &PaymentStore{
 		db: db,
 	}
 }
 
 func (s *PaymentStore) CreatePayment(payment *domain.Payment) error {
-	_, err := s.db.Exec("INSERT INTO payments (correlation_id, amount, payment_processor, created_at, updated_at) VALUES ($1, $2, $3, $4, $5)", payment.CorrelationID, decimalToInt64(payment.Amount), payment.PaymentProcessor, time.Now(), time.Now())
+	_, err := s.db.Exec("INSERT INTO payments (correlation_id, amount, payment_processor, created_at, updated_at) VALUES ($1, $2, $3, $4, $5)", payment.CorrelationID, decimalToInt64(payment.Amount), payment.PaymentProcessor, payment.CreatedAt, time.Now())
 	if err != nil {
 		if pgErr, ok := err.(*pq.Error); ok {
 			if pgErr.Code.Name() == "unique_violation" {

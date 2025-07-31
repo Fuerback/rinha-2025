@@ -30,7 +30,7 @@ func PaymentProcessor(store *storage.PaymentStore) {
 
 	forever := make(chan bool)
 
-	const workerCount = 15
+	const workerCount = 30
 
 	for i := range workerCount {
 		go func(id int) {
@@ -42,22 +42,22 @@ func PaymentProcessor(store *storage.PaymentStore) {
 					continue
 				}
 
-				fmt.Printf("Received a payment event: Correlation ID = %s, Amount = %s\n", paymentEvent.CorrelationID, paymentEvent.Amount)
+				log.Printf("Received a payment event: Correlation ID = %s, Amount = %s\n", paymentEvent.CorrelationID, paymentEvent.Amount)
 
 				body := requestBody{
 					CorrelationID: paymentEvent.CorrelationID,
 					Amount:        paymentEvent.Amount.String(),
-					RequestedAt:   time.Now(),
+					RequestedAt:   paymentEvent.RequestedAt,
 				}
 
 				paymentProcessor := domain.PaymentProcessorDefault
 				err = tryProcessor(os.Getenv("PROCESSOR_DEFAULT_URL"), body, 200*time.Millisecond)
 				if err != nil {
-					fmt.Printf("Error processing payment with default processor: %s", err)
+					log.Printf("Error processing payment with default processor: %s", err)
 					paymentProcessor = domain.PaymentProcessorFallback
 					err = tryProcessor(os.Getenv("PROCESSOR_FALLBACK_URL"), body, 200*time.Millisecond)
 					if err != nil {
-						fmt.Printf("Error processing payment with fallback processor: %s", err)
+						log.Printf("Error processing payment with fallback processor: %s", err)
 						// should add the payment to the queue again to be reprocessed, but it should have a retry logic and a retry delay
 						// maybe create a channel to store the failed payments and retry them later in another thread
 						// failedPaymentsChannel <- paymentEvent
@@ -65,15 +65,15 @@ func PaymentProcessor(store *storage.PaymentStore) {
 					}
 				}
 
-				fmt.Printf("Payment processed successfully with %s processor\n", paymentProcessor)
+				log.Printf("Payment processed successfully with %s processor\n", paymentProcessor)
 
-				err = store.CreatePayment(domain.NewPayment(paymentEvent.CorrelationID, paymentEvent.Amount, paymentProcessor))
+				err = store.CreatePayment(domain.NewPayment(paymentEvent.CorrelationID, paymentEvent.Amount, paymentEvent.RequestedAt, paymentProcessor))
 				if err != nil {
 					if err == storage.ErrUniqueViolation {
-						fmt.Println("Payment already exists")
+						log.Println("Payment already exists")
 						continue
 					}
-					fmt.Printf("failed to create payment: %s", err)
+					log.Printf("failed to create payment: %s", err)
 					continue
 				}
 			}
@@ -104,7 +104,7 @@ func tryProcessor(url string, body requestBody, timeout time.Duration) error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
 		return fmt.Errorf("processor returned non-OK status: %d", resp.StatusCode)
 	}
 

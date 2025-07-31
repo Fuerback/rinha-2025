@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"errors"
+	"log"
 	"log/slog"
 	"net/http"
 	"os"
@@ -12,35 +13,30 @@ import (
 	"github.com/Fuerback/rinha-2025/internal/handler"
 	"github.com/Fuerback/rinha-2025/internal/storage"
 	"github.com/Fuerback/rinha-2025/internal/worker"
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/joho/godotenv"
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 	_ "github.com/lib/pq"
 )
 
 func main() {
-	// Echo instance
-	e := echo.New()
+	app := fiber.New()
+
+	app.Use(logger.New())
 
 	_ = godotenv.Load()
 
-	// Middleware
-	e.Use(middleware.Logger())
-	e.Use(middleware.Recover())
-
-	// Initialize rabbitmq connection
 	event.NewRabbitMQConnection()
 	defer event.RabbitMQClient.Close()
 
-	// Initialize database connection
 	DB_URL := os.Getenv("DATABASE_URL")
 	if DB_URL == "" {
-		e.Logger.Fatal("DATABASE_URL is not set")
+		log.Fatal("DATABASE_URL is not set")
 	}
 
 	db, err := sql.Open("postgres", DB_URL)
 	if err != nil {
-		e.Logger.Fatal("failed to connect to database", "error", err)
+		log.Fatal("failed to connect to database", "error", err)
 	}
 	defer db.Close()
 
@@ -50,20 +46,21 @@ func main() {
 	db.SetConnMaxIdleTime(time.Minute * 5)
 
 	if err := db.Ping(); err != nil {
-		e.Logger.Fatal("failed to ping database", "error", err)
+		log.Fatal("failed to ping database", "error", err)
 	}
 
-	store := storage.NewPaymentStore(db)
+	paymentStorage := storage.NewPaymentStorage(db)
 
-	// Routes
-	e.POST("/payments", handler.CreatePaymentHandler(store))
-	e.GET("/payments-summary", handler.PaymentSummaryHandler(store))
+	worker := worker.NewPaymentProcessor(paymentStorage)
+	worker.Init()
+
+	app.Post("/payments", handler.CreatePaymentHandler(paymentStorage, worker))
+	app.Get("/payments-summary", handler.PaymentSummaryHandler(paymentStorage))
 
 	// Payment Processor
-	go worker.PaymentProcessor(store)
+	//go worker.PaymentProcessor(paymentStorage)
 
-	// Start server
-	if err := e.Start(":9999"); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	if err := app.Listen(":9999"); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		slog.Error("failed to start server", "error", err)
 	}
 }

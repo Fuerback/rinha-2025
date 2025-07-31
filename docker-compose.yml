@@ -69,7 +69,7 @@ services:
       resources:
         limits:
           cpus: "0.20"
-          memory: "70MB"
+          memory: "50MB"
 
   postgres:
     image: postgres:15-alpine
