@@ -2,7 +2,6 @@ package worker
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -52,13 +51,16 @@ func PaymentProcessor(store *storage.PaymentStore) {
 				}
 
 				paymentProcessor := domain.PaymentProcessorDefault
-				err = tryProcessor(os.Getenv("PROCESSOR_DEFAULT_URL"), body, 50*time.Millisecond)
+				err = tryProcessor(os.Getenv("PROCESSOR_DEFAULT_URL"), body, 200*time.Millisecond)
 				if err != nil {
 					fmt.Printf("Error processing payment with default processor: %s", err)
 					paymentProcessor = domain.PaymentProcessorFallback
-					err = tryProcessor(os.Getenv("PROCESSOR_FALLBACK_URL"), body, 50*time.Millisecond)
+					err = tryProcessor(os.Getenv("PROCESSOR_FALLBACK_URL"), body, 200*time.Millisecond)
 					if err != nil {
 						fmt.Printf("Error processing payment with fallback processor: %s", err)
+						// should add the payment to the queue again to be reprocessed, but it should have a retry logic and a retry delay
+						// maybe create a channel to store the failed payments and retry them later in another thread
+						// failedPaymentsChannel <- paymentEvent
 						continue
 					}
 				}
@@ -82,21 +84,20 @@ func PaymentProcessor(store *storage.PaymentStore) {
 }
 
 func tryProcessor(url string, body requestBody, timeout time.Duration) error {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", url+"/payments", bytes.NewBuffer(jsonBody))
+	req, err := http.NewRequest("POST", url+"/payments", bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
+	client := &http.Client{
+		Timeout: timeout,
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return err

@@ -5,7 +5,6 @@ CREATE TABLE IF NOT EXISTS payments (
     correlation_id UUID UNIQUE NOT NULL,
     amount INTEGER NOT NULL,
     payment_processor TEXT,
-    status TEXT NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

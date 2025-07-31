@@ -44,9 +44,9 @@ func main() {
 	}
 	defer db.Close()
 
-	db.SetMaxOpenConns(100)
-	db.SetMaxIdleConns(10)
-	db.SetConnMaxLifetime(time.Hour)
+	db.SetMaxOpenConns(200)
+	db.SetMaxIdleConns(30)
+	db.SetConnMaxLifetime(time.Hour * 2)
 	db.SetConnMaxIdleTime(time.Minute * 5)
 
 	if err := db.Ping(); err != nil {

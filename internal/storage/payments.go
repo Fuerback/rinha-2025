@@ -23,7 +23,7 @@ func NewPaymentStore(db *sql.DB) *PaymentStore {
 }
 
 func (s *PaymentStore) CreatePayment(payment *domain.Payment) error {
-	_, err := s.db.Exec("INSERT INTO payments (correlation_id, amount, status, payment_processor, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)", payment.CorrelationID, decimalToInt64(payment.Amount), payment.Status, payment.PaymentProcessor, time.Now(), time.Now())
+	_, err := s.db.Exec("INSERT INTO payments (correlation_id, amount, payment_processor, created_at, updated_at) VALUES ($1, $2, $3, $4, $5)", payment.CorrelationID, decimalToInt64(payment.Amount), payment.PaymentProcessor, time.Now(), time.Now())
 	if err != nil {
 		if pgErr, ok := err.(*pq.Error); ok {
 			if pgErr.Code.Name() == "unique_violation" {
@@ -35,32 +35,8 @@ func (s *PaymentStore) CreatePayment(payment *domain.Payment) error {
 	return nil
 }
 
-func (s *PaymentStore) FindPendingPayments() ([]domain.Payment, error) {
-	rows, err := s.db.Query("SELECT * FROM payments WHERE status = $1", domain.PaymentStatusPending)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var payments []domain.Payment
-	for rows.Next() {
-		payment := domain.Payment{}
-		if err := rows.Scan(&payment.ID, &payment.CorrelationID, &payment.Amount, &payment.PaymentProcessor, &payment.Status, &payment.CreatedAt, &payment.UpdatedAt); err != nil {
-			return nil, err
-		}
-		payment.Amount = int64ToDecimal(payment.Amount.IntPart())
-		payments = append(payments, payment)
-	}
-	return payments, nil
-}
-
-func (s *PaymentStore) UpdatePaymentStatus(correlationID string, status domain.PaymentStatus, paymentProcessor domain.PaymentProcessor) error {
-	_, err := s.db.Exec("UPDATE payments SET status = $1, payment_processor = $2, updated_at = $3 WHERE correlation_id = $4", status, paymentProcessor, time.Now(), correlationID)
-	return err
-}
-
 func (s *PaymentStore) GetPaymentSummary(from time.Time, to time.Time) (domain.PaymentSummary, error) {
-	rows, err := s.db.Query("SELECT * FROM payments WHERE created_at >= $1 AND created_at <= $2 AND status = $3", from, to, domain.PaymentStatusSuccess)
+	rows, err := s.db.Query("SELECT * FROM payments WHERE created_at >= $1 AND created_at <= $2", from, to)
 	if err != nil {
 		return domain.PaymentSummary{}, err
 	}
@@ -69,7 +45,7 @@ func (s *PaymentStore) GetPaymentSummary(from time.Time, to time.Time) (domain.P
 	var payments []domain.Payment
 	for rows.Next() {
 		payment := domain.Payment{}
-		if err := rows.Scan(&payment.ID, &payment.CorrelationID, &payment.Amount, &payment.PaymentProcessor, &payment.Status, &payment.CreatedAt, &payment.UpdatedAt); err != nil {
+		if err := rows.Scan(&payment.ID, &payment.CorrelationID, &payment.Amount, &payment.PaymentProcessor, &payment.CreatedAt, &payment.UpdatedAt); err != nil {
 			return domain.PaymentSummary{}, err
 		}
 		payment.Amount = int64ToDecimal(payment.Amount.IntPart())

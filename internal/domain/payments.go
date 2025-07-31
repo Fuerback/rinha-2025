@@ -11,7 +11,6 @@ type Payment struct {
 	CorrelationID    string
 	Amount           decimal.Decimal
 	PaymentProcessor PaymentProcessor
-	Status           PaymentStatus
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 }
@@ -38,27 +37,10 @@ const (
 	PaymentProcessorFallback PaymentProcessor = "fallback"
 )
 
-type PaymentStatus string
-
-const (
-	PaymentStatusPending PaymentStatus = "pending"
-	PaymentStatusSuccess PaymentStatus = "success"
-	PaymentStatusFailed  PaymentStatus = "failed"
-)
-
 func NewPayment(correlationID string, amount decimal.Decimal, paymentProcessor PaymentProcessor) *Payment {
 	return &Payment{
 		CorrelationID:    correlationID,
 		Amount:           amount,
-		Status:           PaymentStatusSuccess,
 		PaymentProcessor: paymentProcessor,
 	}
-}
-
-func (p *Payment) SetStatus(status PaymentStatus) {
-	p.Status = status
-}
-
-func (p *Payment) SetPaymentProcessor(processor PaymentProcessor) {
-	p.PaymentProcessor = processor
 }
