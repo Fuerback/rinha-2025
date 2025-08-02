@@ -12,17 +12,13 @@ services:
     ports:
       - "8003:8080"
     environment:
-      - APP_PORT=8080
       - PROCESSOR_DEFAULT_URL=http://payment-processor-default:8080
       - PROCESSOR_FALLBACK_URL=http://payment-processor-fallback:8080
       - DATABASE_URL=postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable
       - RABBITMQ_CONNECTION_URL=amqp://user:password@rabbitmq:5672
-      - USER=postgres
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=postgres
+      - REDIS_CONNECTION_URL=redis://redis-rinha:6379
+      - MAX_WORKERS=10
+      - MAX_QUEUE=15000
     depends_on:
       postgres:
         condition: service_healthy
@@ -42,17 +38,13 @@ services:
     ports:
       - "8004:8080"
     environment:
-      - APP_PORT=8080
       - PROCESSOR_DEFAULT_URL=http://payment-processor-default:8080
       - PROCESSOR_FALLBACK_URL=http://payment-processor-fallback:8080
       - DATABASE_URL=postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable
       - RABBITMQ_CONNECTION_URL=amqp://user:password@rabbitmq:5672
-      - USER=postgres
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=postgres
+      - REDIS_CONNECTION_URL=redis://redis-rinha:6379
+      - MAX_WORKERS=10
+      - MAX_QUEUE=15000
 
   nginx:
     image: nginx:latest
@@ -121,10 +113,26 @@ services:
     #       cpus: "0.40"
     #       memory: "150MB"
 
+  redis:
+    image: redis:latest
+    container_name: redis-rinha
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "PING"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
 volumes:
   postgres_data:
   rinha-store:
   rabbitmq_data:
+  redis_data:
 
 networks:
   backend:

@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/Fuerback/rinha-2025/internal/domain"
-	"github.com/Fuerback/rinha-2025/internal/event"
 	"github.com/Fuerback/rinha-2025/internal/storage"
+	"github.com/Fuerback/rinha-2025/internal/worker"
 	"github.com/gofiber/fiber/v3"
 	"github.com/shopspring/decimal"
 )
@@ -37,15 +37,25 @@ func CreatePaymentHandler(store *storage.PaymentStore) fiber.Handler {
 			})
 		}
 
-		if err := event.RabbitMQClient.SendPaymentEvent(domain.PaymentEvent{
+		// let's create a job with the payload
+		work := worker.Job{Payment: domain.PaymentEvent{
 			CorrelationID: req.CorrelationID,
 			Amount:        req.Amount,
 			RequestedAt:   time.Now(),
-		}); err != nil {
-			return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
-				"error": "failed to send payment event",
-			})
-		}
+		}}
+
+		// Push the work onto the queue.
+		worker.JobQueue <- work
+
+		// if err := event.RabbitMQClient.SendPaymentEvent(domain.PaymentEvent{
+		// 	CorrelationID: req.CorrelationID,
+		// 	Amount:        req.Amount,
+		// 	RequestedAt:   time.Now(),
+		// }); err != nil {
+		// 	return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
+		// 		"error": "failed to send payment event",
+		// 	})
+		// }
 
 		// err := worker.AddPayment(domain.PaymentEvent{
 		// 	CorrelationID: req.CorrelationID,

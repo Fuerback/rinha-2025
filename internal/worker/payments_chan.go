@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"context"
 	"errors"
 	"log"
 	"os"
@@ -22,26 +23,29 @@ func NewPaymentProcessor(store *storage.PaymentStore) *PaymentProcessorChan {
 	return &PaymentProcessorChan{
 		store:            store,
 		processorCh:      make(chan domain.PaymentEvent, 20000),
-		processorRetryCh: make(chan domain.PaymentEvent, 10000),
-		maxRetries:       3,
+		processorRetryCh: make(chan domain.PaymentEvent, 20000),
+		maxRetries:       5,
 		retryDelay:       50 * time.Millisecond,
 	}
 }
 
 func (p *PaymentProcessorChan) AddPayment(paymentEvent domain.PaymentEvent) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
 	select {
 	case p.processorCh <- paymentEvent:
 		return nil
-	default:
-		return errors.New("fail to add payment event to processor channel")
+	case <-ctx.Done():
+		return errors.New("payment queue full - try again later")
 	}
 }
 
 func (p *PaymentProcessorChan) Init() {
-	for range 15 {
+	for range 20 {
 		go p.startProcessor()
 	}
-	for range 15 {
+	for range 20 {
 		go p.startRetryProcessor()
 	}
 }
@@ -62,11 +66,15 @@ func (p *PaymentProcessorChan) startProcessor() {
 			err = tryProcessor(os.Getenv("PROCESSOR_FALLBACK_URL"), body, 200*time.Millisecond)
 			if err != nil {
 				log.Printf("Error processing payment with fallback processor: %s", err)
-				err = p.addPaymentToRetry(paymentEvent, err)
-				if err != nil {
-					log.Printf("Error adding payment to retry: %s", err)
-					continue
-				}
+				go func() {
+					//time.Sleep(p.retryDelay)
+					p.processorRetryCh <- paymentEvent
+				}()
+				// err = p.addPaymentToRetry(paymentEvent, err)
+				// if err != nil {
+				// 	log.Printf("Error adding payment to retry: %s", err)
+				// 	continue
+				// }
 			}
 		}
 
@@ -100,11 +108,15 @@ func (p *PaymentProcessorChan) startRetryProcessor() {
 			err = tryProcessor(os.Getenv("PROCESSOR_FALLBACK_URL"), body, 200*time.Millisecond)
 			if err != nil {
 				log.Printf("Error processing payment with fallback processor: %s", err)
-				err = p.addPaymentToRetry(paymentEvent, err)
-				if err != nil {
-					log.Printf("Error adding payment to retry: %s", err)
-					continue
-				}
+				go func() {
+					time.Sleep(p.retryDelay)
+					p.processorRetryCh <- paymentEvent
+				}()
+				// err = p.addPaymentToRetry(paymentEvent, err)
+				// if err != nil {
+				// 	log.Printf("Error adding payment to retry: %s", err)
+				// 	continue
+				// }
 			}
 		}
 
@@ -132,10 +144,6 @@ func (p *PaymentProcessorChan) addPaymentToRetry(paymentEvent domain.PaymentEven
 
 		p.processorRetryCh <- paymentEvent
 	} else {
-		// err = event.RabbitMQClient.SendPaymentEvent(paymentEvent)
-		// if err != nil {
-		// 	return err
-		// }
 		log.Default().Printf("payment with id %s numRetry %d: %v", paymentEvent.CorrelationID, paymentEvent.RetryCount, err)
 		return nil
 	}
