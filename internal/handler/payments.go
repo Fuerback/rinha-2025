@@ -1,14 +1,15 @@
 package handler
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 	"time"
 
 	"github.com/Fuerback/rinha-2025/internal/domain"
-	"github.com/Fuerback/rinha-2025/internal/event"
 	"github.com/Fuerback/rinha-2025/internal/storage"
 	"github.com/gofiber/fiber/v3"
+	"github.com/nats-io/nats.go"
 	"github.com/shopspring/decimal"
 )
 
@@ -27,7 +28,7 @@ type PaymentSummaryResponse struct {
 	TotalAmount   decimal.Decimal `json:"totalAmount"`
 }
 
-func CreatePaymentHandler(store *storage.PaymentStore) fiber.Handler {
+func CreatePaymentHandler(store *storage.PaymentStore, nc *nats.Conn) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		var req PaymentRequest
 		if err := c.Bind().Body(&req); err != nil {
@@ -37,15 +38,38 @@ func CreatePaymentHandler(store *storage.PaymentStore) fiber.Handler {
 			})
 		}
 
-		if err := event.RabbitMQClient.SendPaymentEvent(domain.PaymentEvent{
+		paymentEvent := domain.PaymentEvent{
 			CorrelationID: req.CorrelationID,
 			Amount:        req.Amount,
 			RequestedAt:   time.Now(),
-		}); err != nil {
+		}
+
+		// convert paymentEvent to json
+		jsonPaymentEvent, err := json.Marshal(paymentEvent)
+		if err != nil {
+			log.Printf("failed to marshal payment event: %s", err)
 			return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
-				"error": "failed to send payment event",
+				"error": "failed to marshal payment event",
 			})
 		}
+
+		err = nc.Publish("payment", jsonPaymentEvent)
+		if err != nil {
+			log.Printf("failed to publish payment event: %s", err)
+			return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
+				"error": "failed to publish payment event",
+			})
+		}
+
+		// if err := event.RabbitMQClient.SendPaymentEvent(domain.PaymentEvent{
+		// 	CorrelationID: req.CorrelationID,
+		// 	Amount:        req.Amount,
+		// 	RequestedAt:   time.Now(),
+		// }); err != nil {
+		// 	return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
+		// 		"error": "failed to send payment event",
+		// 	})
+		// }
 
 		// err := worker.AddPayment(domain.PaymentEvent{
 		// 	CorrelationID: req.CorrelationID,

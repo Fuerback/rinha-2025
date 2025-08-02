@@ -17,24 +17,19 @@ services:
       - PROCESSOR_FALLBACK_URL=http://payment-processor-fallback:8080
       - DATABASE_URL=postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable
       - RABBITMQ_CONNECTION_URL=amqp://user:password@rabbitmq:5672
-      - USER=postgres
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=postgres
+      - NATS_URL=nats://nats:4222
     depends_on:
       postgres:
         condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
+      # nats:
+      #   condition: service_healthy
     volumes:
       - rinha-store:/data
     deploy:
       resources:
         limits:
-          cpus: "0.4"
-          memory: "50MB"
+          cpus: "0.2"
+          memory: "40MB"
 
   app2:
     <<: *app
@@ -47,12 +42,33 @@ services:
       - PROCESSOR_FALLBACK_URL=http://payment-processor-fallback:8080
       - DATABASE_URL=postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable
       - RABBITMQ_CONNECTION_URL=amqp://user:password@rabbitmq:5672
-      - USER=postgres
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=postgres
+      - NATS_URL=nats://nats:4222
+
+  app3:
+    <<: *app
+    hostname: app3
+    ports:
+      - "8005:8080"
+    environment:
+      - APP_PORT=8080
+      - PROCESSOR_DEFAULT_URL=http://payment-processor-default:8080
+      - PROCESSOR_FALLBACK_URL=http://payment-processor-fallback:8080
+      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable
+      - RABBITMQ_CONNECTION_URL=amqp://user:password@rabbitmq:5672
+      - NATS_URL=nats://nats:4222
+
+  app4:
+    <<: *app
+    hostname: app4
+    ports:
+      - "8006:8080"
+    environment:
+      - APP_PORT=8080
+      - PROCESSOR_DEFAULT_URL=http://payment-processor-default:8080
+      - PROCESSOR_FALLBACK_URL=http://payment-processor-fallback:8080
+      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable
+      - RABBITMQ_CONNECTION_URL=amqp://user:password@rabbitmq:5672
+      - NATS_URL=nats://nats:4222
 
   nginx:
     image: nginx:latest
@@ -65,11 +81,13 @@ services:
     depends_on:
       - app1
       - app2
+      - app3
+      - app4
     deploy:
       resources:
         limits:
           cpus: "0.20"
-          memory: "50MB"
+          memory: "15MB"
 
   postgres:
     image: postgres:15-alpine
@@ -92,39 +110,63 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.2"
-          memory: "90MB"
+          cpus: "0.3"
+          memory: "148MB"
 
-  rabbitmq:
-    image: rabbitmq:3-management
-    container_name: rabbitmq
-    hostname: rabbitmq
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
-    networks:
-      - backend
-    environment:
-      RABBITMQ_DEFAULT_USER: user
-      RABBITMQ_DEFAULT_PASS: password
-    restart: always
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
-      interval: 5s
-      timeout: 10s
-      retries: 5
+  # rabbitmq:
+  #   image: rabbitmq:3-management
+  #   container_name: rabbitmq
+  #   hostname: rabbitmq
+  #   ports:
+  #     - "5672:5672"
+  #     - "15672:15672"
+  #   volumes:
+  #     - rabbitmq_data:/var/lib/rabbitmq
+  #   networks:
+  #     - backend
+  #   environment:
+  #     RABBITMQ_DEFAULT_USER: user
+  #     RABBITMQ_DEFAULT_PASS: password
+  #   restart: always
+  #   healthcheck:
+  #     test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+  #     interval: 5s
+  #     timeout: 10s
+  #     retries: 5
     # deploy:
     #   resources:
     #     limits:
     #       cpus: "0.40"
     #       memory: "150MB"
 
+  nats:
+    image: nats:latest
+    ports:
+      - "4222:4222" # Client port
+      - "8222:8222" # HTTP management port
+      - "6222:6222" # Clustering port (if applicable for clustering)
+    command: -js # Optional: Enable JetStream for persistence and advanced messaging
+    volumes:
+      - nats_data:/data # Optional: Persist JetStream data to a named volume
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          cpus: "0.20"
+          memory: "20MB"
+    # healthcheck:
+    #   test: ["CMD", "nats", "server", "check", "--server", "nats://localhost:4222"]
+    #   start_period: 3s
+    #   retries: 3
+    #   timeout: 3s
+    #   interval: 14s
+
 volumes:
   postgres_data:
   rinha-store:
   rabbitmq_data:
+  nats_data:
 
 networks:
   backend:
