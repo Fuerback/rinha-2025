@@ -18,7 +18,7 @@ services:
       - RABBITMQ_CONNECTION_URL=amqp://user:password@rabbitmq:5672
       - REDIS_CONNECTION_URL=redis://redis-rinha:6379
       - MAX_WORKERS=10
-      - MAX_QUEUE=15000
+      - MAX_QUEUE=20000
     depends_on:
       postgres:
         condition: service_healthy
@@ -44,7 +44,7 @@ services:
       - RABBITMQ_CONNECTION_URL=amqp://user:password@rabbitmq:5672
       - REDIS_CONNECTION_URL=redis://redis-rinha:6379
       - MAX_WORKERS=10
-      - MAX_QUEUE=15000
+      - MAX_QUEUE=20000
 
   nginx:
     image: nginx:latest

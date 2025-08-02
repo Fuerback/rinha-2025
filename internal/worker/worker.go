@@ -3,7 +3,6 @@ package worker
 import (
 	"fmt"
 	"log"
-	"math/rand"
 	"os"
 	"time"
 
@@ -142,16 +141,16 @@ func (w Worker) sendToPaymentProcessor(paymentEvent domain.PaymentEvent) error {
 func (w Worker) shouldRetry(paymentEvent domain.PaymentEvent, err error) bool {
 	// Implement logic to determine if the error is retryable
 	// For example, you can check the error type or the retry count
-	return paymentEvent.RetryCount < 10
+	return paymentEvent.RetryCount < 20
 }
 
 func (w Worker) calculateBackoff(retryCount int, err error) time.Duration {
 	// Implement exponential backoff with jitter
 	// For example, you can use the following formula:
 	// backoffDelay = (2 ^ retryCount) * 100ms + (random(0, 100ms))
-	backoffDelay := time.Duration((2 << uint(retryCount)) * 50 * time.Millisecond)
-	jitter := time.Duration(rand.Intn(50)) * time.Millisecond
-	return backoffDelay + jitter
+	backoffDelay := time.Duration(retryCount*10) * time.Millisecond
+	//jitter := time.Duration(rand.Intn(50)) * time.Millisecond
+	return backoffDelay // + jitter
 }
 
 // ------
