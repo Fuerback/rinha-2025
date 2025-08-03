@@ -23,7 +23,7 @@ type requestBody struct {
 func PaymentProcessor(store *storage.PaymentStore, nc *nats.Conn) {
 	forever := make(chan bool)
 
-	const workerCount = 10
+	const workerCount = 3
 
 	for i := range workerCount {
 		go func(id int) {
