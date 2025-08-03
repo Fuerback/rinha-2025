@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Fuerback/rinha-2025/internal/domain"
+	"github.com/Fuerback/rinha-2025/internal/model"
 	"github.com/Fuerback/rinha-2025/internal/storage"
 	"github.com/gofiber/fiber/v3"
 	"github.com/nats-io/nats.go"
@@ -28,7 +28,7 @@ type PaymentSummaryResponse struct {
 	TotalAmount   decimal.Decimal `json:"totalAmount"`
 }
 
-func CreatePaymentHandler(store *storage.PaymentStore, nc *nats.Conn) fiber.Handler {
+func CreatePaymentHandler(nc *nats.Conn) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		var req PaymentRequest
 		if err := c.Bind().Body(&req); err != nil {
@@ -38,7 +38,7 @@ func CreatePaymentHandler(store *storage.PaymentStore, nc *nats.Conn) fiber.Hand
 			})
 		}
 
-		paymentEvent := domain.PaymentEvent{
+		paymentEvent := model.PaymentEvent{
 			CorrelationID: req.CorrelationID,
 			Amount:        req.Amount,
 			RequestedAt:   time.Now(),
@@ -67,7 +67,7 @@ func CreatePaymentHandler(store *storage.PaymentStore, nc *nats.Conn) fiber.Hand
 	}
 }
 
-func PaymentSummaryHandler(store *storage.PaymentStore) fiber.Handler {
+func PaymentSummaryHandler(store storage.PaymentStore) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		fromStr := c.Query("from")
 		toStr := c.Query("to")

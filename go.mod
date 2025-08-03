@@ -10,7 +10,6 @@ require (
 require (
 	github.com/gofiber/fiber/v3 v3.0.0-beta.5
 	github.com/nats-io/nats.go v1.44.0
-	github.com/rabbitmq/amqp091-go v1.10.0
 )
 
 require (

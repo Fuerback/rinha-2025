@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Fuerback/rinha-2025/internal/domain"
+	"github.com/Fuerback/rinha-2025/internal/model"
 	"github.com/Fuerback/rinha-2025/internal/storage"
 	"github.com/nats-io/nats.go"
 )
@@ -21,8 +21,17 @@ type requestBody struct {
 	RequestedAt   time.Time `json:"requestedAt"`
 }
 
-func PaymentProcessor(store *storage.PaymentStore, nc *nats.Conn, workerCount int) {
+func PaymentProcessor(store storage.PaymentStore, nc *nats.Conn) {
 	forever := make(chan bool)
+
+	workers := os.Getenv("WORKERS")
+	if workers == "" {
+		workers = "3"
+	}
+	workerCount, err := strconv.Atoi(workers)
+	if err != nil {
+		log.Fatal("failed to parse workers", "error", err)
+	}
 
 	clientTimeoutStr := os.Getenv("CLIENT_TIMEOUT")
 	if clientTimeoutStr == "" {
@@ -39,7 +48,7 @@ func PaymentProcessor(store *storage.PaymentStore, nc *nats.Conn, workerCount in
 	for i := range workerCount {
 		go func(id int) {
 			nc.QueueSubscribe("payment", "payment-queue", func(msg *nats.Msg) {
-				var paymentEvent domain.PaymentEvent
+				var paymentEvent model.PaymentEvent
 				err := json.Unmarshal(msg.Data, &paymentEvent)
 				if err != nil {
 					log.Printf("Error reading payment event (please check the JSON format): %s", err)
@@ -52,11 +61,11 @@ func PaymentProcessor(store *storage.PaymentStore, nc *nats.Conn, workerCount in
 					RequestedAt:   paymentEvent.RequestedAt,
 				}
 
-				paymentProcessor := domain.PaymentProcessorDefault
+				paymentProcessor := model.PaymentProcessorDefault
 				err = tryProcessor(defaultProcessorURL, body, time.Duration(clientTimeout)*time.Millisecond)
 				if err != nil {
 					log.Printf("Error processing payment with default processor: %s", err)
-					paymentProcessor = domain.PaymentProcessorFallback
+					paymentProcessor = model.PaymentProcessorFallback
 					err = tryProcessor(fallbackProcessorURL, body, time.Duration(clientTimeout)*time.Millisecond)
 					if err != nil {
 						log.Printf("Error processing payment with fallback processor: %s", err)
@@ -67,7 +76,7 @@ func PaymentProcessor(store *storage.PaymentStore, nc *nats.Conn, workerCount in
 
 				log.Printf("Payment processed successfully with %s processor\n", paymentProcessor)
 
-				err = store.CreatePayment(domain.NewPayment(paymentEvent.CorrelationID, paymentEvent.Amount, paymentEvent.RequestedAt, paymentProcessor))
+				err = store.CreatePayment(model.NewPayment(paymentEvent.CorrelationID, paymentEvent.Amount, paymentEvent.RequestedAt, paymentProcessor))
 				if err != nil {
 					if err == storage.ErrUniqueViolation {
 						log.Println("Payment already exists")
@@ -115,7 +124,7 @@ func tryProcessor(url string, body requestBody, timeout time.Duration) error {
 	return nil
 }
 
-func addPaymentToRetry(paymentEvent domain.PaymentEvent, nc *nats.Conn, err error) error {
+func addPaymentToRetry(paymentEvent model.PaymentEvent, nc *nats.Conn, err error) error {
 	log.Default().Printf("enqueue to retry payment with id %s numRetry %d: %v", paymentEvent.CorrelationID, paymentEvent.RetryCount, err)
 
 	// convert paymentEvent to json
