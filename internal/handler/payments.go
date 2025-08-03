@@ -61,27 +61,6 @@ func CreatePaymentHandler(store *storage.PaymentStore, nc *nats.Conn) fiber.Hand
 			})
 		}
 
-		// if err := event.RabbitMQClient.SendPaymentEvent(domain.PaymentEvent{
-		// 	CorrelationID: req.CorrelationID,
-		// 	Amount:        req.Amount,
-		// 	RequestedAt:   time.Now(),
-		// }); err != nil {
-		// 	return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
-		// 		"error": "failed to send payment event",
-		// 	})
-		// }
-
-		// err := worker.AddPayment(domain.PaymentEvent{
-		// 	CorrelationID: req.CorrelationID,
-		// 	Amount:        req.Amount,
-		// 	RequestedAt:   time.Now(),
-		// })
-		// if err != nil {
-		// 	return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
-		// 		"error": "failed to add payment event to processor channel",
-		// 	})
-		// }
-
 		return c.Status(http.StatusCreated).JSON(fiber.Map{
 			"message": "Payment created",
 		})

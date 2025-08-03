@@ -37,6 +37,16 @@ const (
 	PaymentProcessorFallback PaymentProcessor = "fallback"
 )
 
+var PaymentProcessorMap = map[PaymentProcessor]int{
+	PaymentProcessorDefault:  0,
+	PaymentProcessorFallback: 1,
+}
+
+var PaymentProcessorTranslationMap = map[int]PaymentProcessor{
+	0: PaymentProcessorDefault,
+	1: PaymentProcessorFallback,
+}
+
 func NewPayment(correlationID string, amount decimal.Decimal, requestedAt time.Time, paymentProcessor PaymentProcessor) *Payment {
 	return &Payment{
 		CorrelationID:    correlationID,

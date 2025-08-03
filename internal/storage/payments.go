@@ -23,7 +23,7 @@ func NewPaymentStorage(db *sql.DB) *PaymentStore {
 }
 
 func (s *PaymentStore) CreatePayment(payment *domain.Payment) error {
-	_, err := s.db.Exec("INSERT INTO payments (correlation_id, amount, payment_processor, requested_at) VALUES ($1, $2, $3, $4)", payment.CorrelationID, decimalToInt64(payment.Amount), payment.PaymentProcessor, payment.RequestedAt)
+	_, err := s.db.Exec("INSERT INTO payments (correlation_id, amount, payment_processor, requested_at) VALUES ($1, $2, $3, $4)", payment.CorrelationID, decimalToInt64(payment.Amount), domain.PaymentProcessorMap[payment.PaymentProcessor], payment.RequestedAt)
 	if err != nil {
 		if pgErr, ok := err.(*pq.Error); ok {
 			if pgErr.Code.Name() == "unique_violation" {
@@ -35,33 +35,46 @@ func (s *PaymentStore) CreatePayment(payment *domain.Payment) error {
 	return nil
 }
 
+type paymentSummaryModel struct {
+	PaymentProcessor int
+	TotalAmount      int64
+	PaymentCount     int
+}
+
 func (s *PaymentStore) GetPaymentSummary(from time.Time, to time.Time) (domain.PaymentSummary, error) {
-	rows, err := s.db.Query("SELECT * FROM payments WHERE requested_at >= $1 AND requested_at <= $2", from, to)
+	rows, err := s.db.Query(`SELECT 
+    payment_processor,
+    SUM(amount) as total_amount,
+    COUNT(*) as payment_count
+FROM payments 
+WHERE requested_at BETWEEN $1 AND $2
+GROUP BY payment_processor
+ORDER BY payment_processor;`, from, to)
 	if err != nil {
 		return domain.PaymentSummary{}, err
 	}
 	defer rows.Close()
 
-	var payments []domain.Payment
+	var payments []paymentSummaryModel
 	for rows.Next() {
-		payment := domain.Payment{}
-		if err := rows.Scan(&payment.CorrelationID, &payment.Amount, &payment.PaymentProcessor, &payment.RequestedAt); err != nil {
+		payment := paymentSummaryModel{}
+		if err := rows.Scan(&payment.PaymentProcessor, &payment.TotalAmount, &payment.PaymentCount); err != nil {
 			return domain.PaymentSummary{}, err
 		}
-		payment.Amount = int64ToDecimal(payment.Amount.IntPart())
 		payments = append(payments, payment)
 	}
 
 	var summary domain.PaymentSummary
 	for _, payment := range payments {
-		if payment.PaymentProcessor == domain.PaymentProcessorDefault {
-			summary.Default.TotalRequests++
-			summary.Default.TotalAmount = summary.Default.TotalAmount.Add(payment.Amount)
+		if payment.PaymentProcessor == 0 {
+			summary.Default.TotalAmount = int64ToDecimal(payment.TotalAmount)
+			summary.Default.TotalRequests = payment.PaymentCount
 		} else {
-			summary.Fallback.TotalRequests++
-			summary.Fallback.TotalAmount = summary.Fallback.TotalAmount.Add(payment.Amount)
+			summary.Fallback.TotalAmount = int64ToDecimal(payment.TotalAmount)
+			summary.Fallback.TotalRequests = payment.PaymentCount
 		}
 	}
+
 	return summary, nil
 }
 
