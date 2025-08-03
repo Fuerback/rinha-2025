@@ -15,7 +15,6 @@ services:
       - PROCESSOR_DEFAULT_URL=http://payment-processor-default:8080
       - PROCESSOR_FALLBACK_URL=http://payment-processor-fallback:8080
       - DATABASE_URL=postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable
-      - RABBITMQ_CONNECTION_URL=amqp://user:password@rabbitmq:5672
       - NATS_URL=nats://nats:4222
       - WORKERS=3
       - CLIENT_TIMEOUT=500
@@ -41,7 +40,6 @@ services:
       - PROCESSOR_DEFAULT_URL=http://payment-processor-default:8080
       - PROCESSOR_FALLBACK_URL=http://payment-processor-fallback:8080
       - DATABASE_URL=postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable
-      - RABBITMQ_CONNECTION_URL=amqp://user:password@rabbitmq:5672
       - NATS_URL=nats://nats:4222
       - WORKERS=3
       - CLIENT_TIMEOUT=500
@@ -55,7 +53,6 @@ services:
       - PROCESSOR_DEFAULT_URL=http://payment-processor-default:8080
       - PROCESSOR_FALLBACK_URL=http://payment-processor-fallback:8080
       - DATABASE_URL=postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable
-      - RABBITMQ_CONNECTION_URL=amqp://user:password@rabbitmq:5672
       - NATS_URL=nats://nats:4222
       - WORKERS=3
       - CLIENT_TIMEOUT=500
@@ -69,7 +66,6 @@ services:
       - PROCESSOR_DEFAULT_URL=http://payment-processor-default:8080
       - PROCESSOR_FALLBACK_URL=http://payment-processor-fallback:8080
       - DATABASE_URL=postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable
-      - RABBITMQ_CONNECTION_URL=amqp://user:password@rabbitmq:5672
       - NATS_URL=nats://nats:4222
       - WORKERS=3
       - CLIENT_TIMEOUT=500
