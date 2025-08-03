@@ -42,11 +42,11 @@ func PaymentProcessor(store *storage.PaymentStore, nc *nats.Conn) {
 				}
 
 				paymentProcessor := domain.PaymentProcessorDefault
-				err = tryProcessor(os.Getenv("PROCESSOR_DEFAULT_URL"), body, 200*time.Millisecond)
+				err = tryProcessor(os.Getenv("PROCESSOR_DEFAULT_URL"), body, 500*time.Millisecond)
 				if err != nil {
 					log.Printf("Error processing payment with default processor: %s", err)
 					paymentProcessor = domain.PaymentProcessorFallback
-					err = tryProcessor(os.Getenv("PROCESSOR_FALLBACK_URL"), body, 200*time.Millisecond)
+					err = tryProcessor(os.Getenv("PROCESSOR_FALLBACK_URL"), body, 500*time.Millisecond)
 					if err != nil {
 						log.Printf("Error processing payment with fallback processor: %s", err)
 						addPaymentToRetry(paymentEvent, nc, err)
