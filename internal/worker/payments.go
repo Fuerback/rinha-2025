@@ -69,7 +69,7 @@ func PaymentProcessor(store storage.PaymentStore, nc *nats.Conn) {
 					err = tryProcessor(fallbackProcessorURL, body, time.Duration(clientTimeout)*time.Millisecond)
 					if err != nil {
 						log.Printf("Error processing payment with fallback processor: %s", err)
-						addPaymentToRetry(paymentEvent, nc, err)
+						addPaymentToRetry(msg.Data, nc, err)
 						return
 					}
 				}
@@ -124,29 +124,14 @@ func tryProcessor(url string, body requestBody, timeout time.Duration) error {
 	return nil
 }
 
-func addPaymentToRetry(paymentEvent model.PaymentEvent, nc *nats.Conn, err error) error {
-	log.Default().Printf("enqueue to retry payment with id %s numRetry %d: %v", paymentEvent.CorrelationID, paymentEvent.RetryCount, err)
+func addPaymentToRetry(paymentEvent []byte, nc *nats.Conn, err error) error {
+	log.Default().Printf("enqueue to retry payment: %v", err)
 
-	// convert paymentEvent to json
-	jsonPaymentEvent, err := json.Marshal(paymentEvent)
-	if err != nil {
-		log.Printf("failed to marshal payment event: %s", err)
-		return fmt.Errorf("failed to marshal payment event: %s", err)
-	}
-
-	err = nc.Publish("payment", jsonPaymentEvent)
+	err = nc.Publish("payment", paymentEvent)
 	if err != nil {
 		log.Printf("failed to publish payment event: %s", err)
 		return fmt.Errorf("failed to publish payment event: %s", err)
 	}
-
-	// TODO: no retry delay?
-	//time.Sleep(20 * time.Millisecond)
-
-	// err = event.RabbitMQClient.SendPaymentEventRetry(paymentEvent)
-	// if err != nil {
-	// 	return err
-	// }
 
 	return nil
 }
