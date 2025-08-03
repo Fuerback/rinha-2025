@@ -63,7 +63,7 @@ func main() {
 	app.Post("/payments", handler.CreatePaymentHandler(nc))
 	app.Get("/payments-summary", handler.PaymentSummaryHandler(paymentStorage))
 
-	if err := app.Listen(":9999"); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	if err := app.Listen(":8080"); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		slog.Error("failed to start server", "error", err)
 	}
 }

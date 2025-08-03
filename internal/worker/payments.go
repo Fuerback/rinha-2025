@@ -37,11 +37,19 @@ func NewPaymentProcessorWorker(store storage.PaymentStore, nc *nats.Conn) *Payme
 		log.Fatal("failed to parse client timeout", "error", err)
 	}
 
+	transport := &http.Transport{
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 50,
+		IdleConnTimeout:     90 * time.Second,
+		DisableCompression:  true,
+	}
+
 	return &PaymentProcessorWorker{
 		store: store,
 		nc:    nc,
 		client: &http.Client{
-			Timeout: time.Duration(clientTimeout) * time.Millisecond,
+			Timeout:   time.Duration(clientTimeout) * time.Millisecond,
+			Transport: transport,
 		},
 	}
 }
