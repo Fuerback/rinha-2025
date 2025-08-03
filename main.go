@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/Fuerback/rinha-2025/internal/handler"
@@ -49,22 +50,27 @@ func main() {
 		log.Fatal("failed to ping database", "error", err)
 	}
 
+	paymentStorage := storage.NewPaymentStorage(db)
+
 	nc, err := nats.Connect(os.Getenv("NATS_URL"))
 	if err != nil {
 		log.Fatal("failed to connect to nats", "error", err)
 	}
 	defer nc.Drain()
 
-	paymentStorage := storage.NewPaymentStorage(db)
+	workers := os.Getenv("WORKERS")
+	if workers == "" {
+		workers = "3"
+	}
+	workerCount, err := strconv.Atoi(workers)
+	if err != nil {
+		log.Fatal("failed to parse workers", "error", err)
+	}
 
-	// worker := worker.NewPaymentProcessor(paymentStorage)
-	// worker.Init()
+	go worker.PaymentProcessor(paymentStorage, nc, workerCount)
 
 	app.Post("/payments", handler.CreatePaymentHandler(paymentStorage, nc))
 	app.Get("/payments-summary", handler.PaymentSummaryHandler(paymentStorage))
-
-	// Payment Processor
-	go worker.PaymentProcessor(paymentStorage, nc)
 
 	if err := app.Listen(":9999"); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		slog.Error("failed to start server", "error", err)

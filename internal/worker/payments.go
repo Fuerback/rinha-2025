@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/Fuerback/rinha-2025/internal/domain"
@@ -20,10 +21,20 @@ type requestBody struct {
 	RequestedAt   time.Time `json:"requestedAt"`
 }
 
-func PaymentProcessor(store *storage.PaymentStore, nc *nats.Conn) {
+func PaymentProcessor(store *storage.PaymentStore, nc *nats.Conn, workerCount int) {
 	forever := make(chan bool)
 
-	const workerCount = 3
+	clientTimeoutStr := os.Getenv("CLIENT_TIMEOUT")
+	if clientTimeoutStr == "" {
+		clientTimeoutStr = "500"
+	}
+	clientTimeout, err := strconv.Atoi(clientTimeoutStr)
+	if err != nil {
+		log.Fatal("failed to parse client timeout", "error", err)
+	}
+
+	defaultProcessorURL := os.Getenv("PROCESSOR_DEFAULT_URL")
+	fallbackProcessorURL := os.Getenv("PROCESSOR_FALLBACK_URL")
 
 	for i := range workerCount {
 		go func(id int) {
@@ -42,11 +53,11 @@ func PaymentProcessor(store *storage.PaymentStore, nc *nats.Conn) {
 				}
 
 				paymentProcessor := domain.PaymentProcessorDefault
-				err = tryProcessor(os.Getenv("PROCESSOR_DEFAULT_URL"), body, 500*time.Millisecond)
+				err = tryProcessor(defaultProcessorURL, body, time.Duration(clientTimeout)*time.Millisecond)
 				if err != nil {
 					log.Printf("Error processing payment with default processor: %s", err)
 					paymentProcessor = domain.PaymentProcessorFallback
-					err = tryProcessor(os.Getenv("PROCESSOR_FALLBACK_URL"), body, 500*time.Millisecond)
+					err = tryProcessor(fallbackProcessorURL, body, time.Duration(clientTimeout)*time.Millisecond)
 					if err != nil {
 						log.Printf("Error processing payment with fallback processor: %s", err)
 						addPaymentToRetry(paymentEvent, nc, err)
