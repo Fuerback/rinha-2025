@@ -57,7 +57,8 @@ func main() {
 	}
 	defer nc.Drain()
 
-	go worker.PaymentProcessor(paymentStorage, nc)
+	paymentWorker := worker.NewPaymentProcessorWorker(paymentStorage, nc)
+	go paymentWorker.Start()
 
 	app.Post("/payments", handler.CreatePaymentHandler(nc))
 	app.Get("/payments-summary", handler.PaymentSummaryHandler(paymentStorage))

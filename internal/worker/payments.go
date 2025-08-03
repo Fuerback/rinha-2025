@@ -21,7 +21,32 @@ type requestBody struct {
 	RequestedAt   time.Time `json:"requestedAt"`
 }
 
-func PaymentProcessor(store storage.PaymentStore, nc *nats.Conn) {
+type PaymentProcessorWorker struct {
+	store  storage.PaymentStore
+	nc     *nats.Conn
+	client *http.Client
+}
+
+func NewPaymentProcessorWorker(store storage.PaymentStore, nc *nats.Conn) *PaymentProcessorWorker {
+	clientTimeoutStr := os.Getenv("CLIENT_TIMEOUT")
+	if clientTimeoutStr == "" {
+		clientTimeoutStr = "500"
+	}
+	clientTimeout, err := strconv.Atoi(clientTimeoutStr)
+	if err != nil {
+		log.Fatal("failed to parse client timeout", "error", err)
+	}
+
+	return &PaymentProcessorWorker{
+		store: store,
+		nc:    nc,
+		client: &http.Client{
+			Timeout: time.Duration(clientTimeout) * time.Millisecond,
+		},
+	}
+}
+
+func (w *PaymentProcessorWorker) Start() {
 	forever := make(chan bool)
 
 	workers := os.Getenv("WORKERS")
@@ -33,21 +58,12 @@ func PaymentProcessor(store storage.PaymentStore, nc *nats.Conn) {
 		log.Fatal("failed to parse workers", "error", err)
 	}
 
-	clientTimeoutStr := os.Getenv("CLIENT_TIMEOUT")
-	if clientTimeoutStr == "" {
-		clientTimeoutStr = "500"
-	}
-	clientTimeout, err := strconv.Atoi(clientTimeoutStr)
-	if err != nil {
-		log.Fatal("failed to parse client timeout", "error", err)
-	}
-
 	defaultProcessorURL := os.Getenv("PROCESSOR_DEFAULT_URL")
 	fallbackProcessorURL := os.Getenv("PROCESSOR_FALLBACK_URL")
 
 	for i := range workerCount {
 		go func(id int) {
-			nc.QueueSubscribe("payment", "payment-queue", func(msg *nats.Msg) {
+			w.nc.QueueSubscribe("payment", "payment-queue", func(msg *nats.Msg) {
 				var paymentEvent model.PaymentEvent
 				err := json.Unmarshal(msg.Data, &paymentEvent)
 				if err != nil {
@@ -62,21 +78,21 @@ func PaymentProcessor(store storage.PaymentStore, nc *nats.Conn) {
 				}
 
 				paymentProcessor := model.PaymentProcessorDefault
-				err = tryProcessor(defaultProcessorURL, body, time.Duration(clientTimeout)*time.Millisecond)
+				err = w.SendToProcessor(defaultProcessorURL, body)
 				if err != nil {
 					log.Printf("Error processing payment with default processor: %s", err)
 					paymentProcessor = model.PaymentProcessorFallback
-					err = tryProcessor(fallbackProcessorURL, body, time.Duration(clientTimeout)*time.Millisecond)
+					err = w.SendToProcessor(fallbackProcessorURL, body)
 					if err != nil {
 						log.Printf("Error processing payment with fallback processor: %s", err)
-						addPaymentToRetry(msg.Data, nc, err)
+						w.retryPayment(msg.Data, err)
 						return
 					}
 				}
 
 				log.Printf("Payment processed successfully with %s processor\n", paymentProcessor)
 
-				err = store.CreatePayment(model.NewPayment(paymentEvent.CorrelationID, paymentEvent.Amount, paymentEvent.RequestedAt, paymentProcessor))
+				err = w.store.CreatePayment(model.NewPayment(paymentEvent.CorrelationID, paymentEvent.Amount, paymentEvent.RequestedAt, paymentProcessor))
 				if err != nil {
 					if err == storage.ErrUniqueViolation {
 						log.Println("Payment already exists")
@@ -92,7 +108,7 @@ func PaymentProcessor(store storage.PaymentStore, nc *nats.Conn) {
 	<-forever
 }
 
-func tryProcessor(url string, body requestBody, timeout time.Duration) error {
+func (w *PaymentProcessorWorker) SendToProcessor(url string, body requestBody) error {
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return err
@@ -104,30 +120,26 @@ func tryProcessor(url string, body requestBody, timeout time.Duration) error {
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{
-		Timeout: timeout,
-	}
-	resp, err := client.Do(req)
+	resp, err := w.client.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to process payment: %s", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusUnprocessableEntity {
-		return nil
-	}
-
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		if resp.StatusCode == http.StatusUnprocessableEntity {
+			return nil
+		}
 		return fmt.Errorf("processor returned non-OK status: %d", resp.StatusCode)
 	}
 
 	return nil
 }
 
-func addPaymentToRetry(paymentEvent []byte, nc *nats.Conn, err error) error {
+func (w *PaymentProcessorWorker) retryPayment(paymentEvent []byte, err error) error {
 	log.Default().Printf("enqueue to retry payment: %v", err)
 
-	err = nc.Publish("payment", paymentEvent)
+	err = w.nc.Publish("payment", paymentEvent)
 	if err != nil {
 		log.Printf("failed to publish payment event: %s", err)
 		return fmt.Errorf("failed to publish payment event: %s", err)
