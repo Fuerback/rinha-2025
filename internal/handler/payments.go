@@ -1,9 +1,12 @@
 package handler
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/Fuerback/rinha-2025/internal/model"
@@ -13,9 +16,17 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+var (
+	bufferPool = sync.Pool{
+		New: func() interface{} {
+			return &bytes.Buffer{}
+		},
+	}
+)
+
 type PaymentRequest struct {
-	CorrelationID string          `json:"correlationId"`
-	Amount        decimal.Decimal `json:"amount"`
+	CorrelationID string          `json:"correlationId" validate:"required"`
+	Amount        decimal.Decimal `json:"amount" validate:"required,gt=0"`
 }
 
 type PaymentResponse struct {
@@ -38,28 +49,56 @@ func CreatePaymentHandler(nc *nats.Conn) fiber.Handler {
 			})
 		}
 
+		if req.CorrelationID == "" {
+			return c.Status(http.StatusBadRequest).JSON(fiber.Map{
+				"error": "correlationId is required",
+			})
+		}
+
+		if req.Amount.IsZero() || req.Amount.IsNegative() {
+			return c.Status(http.StatusBadRequest).JSON(fiber.Map{
+				"error": "amount must be greater than zero",
+			})
+		}
+
 		paymentEvent := model.PaymentEvent{
 			CorrelationID: req.CorrelationID,
 			Amount:        req.Amount,
 			RequestedAt:   time.Now(),
 		}
 
-		// convert paymentEvent to json
-		jsonPaymentEvent, err := json.Marshal(paymentEvent)
-		if err != nil {
+		buf := bufferPool.Get().(*bytes.Buffer)
+		buf.Reset()
+		defer bufferPool.Put(buf)
+
+		encoder := json.NewEncoder(buf)
+		if err := encoder.Encode(paymentEvent); err != nil {
 			log.Printf("failed to marshal payment event: %s", err)
 			return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
 				"error": "failed to marshal payment event",
 			})
 		}
 
-		err = nc.Publish("payment", jsonPaymentEvent)
-		if err != nil {
-			log.Printf("failed to publish payment event: %s", err)
-			return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
-				"error": "failed to publish payment event",
-			})
-		}
+		jsonPaymentEvent := buf.Bytes()
+
+		go func() {
+			publishCtx, publishCancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer publishCancel()
+
+			done := make(chan error, 1)
+			go func() {
+				done <- nc.Publish("payment", jsonPaymentEvent)
+			}()
+
+			select {
+			case err := <-done:
+				if err != nil {
+					log.Printf("failed to publish payment event: %s", err)
+				}
+			case <-publishCtx.Done():
+				log.Printf("publish timeout for correlation_id: %s", req.CorrelationID)
+			}
+		}()
 
 		return c.Status(http.StatusCreated).JSON(fiber.Map{
 			"message": "Payment created",
@@ -69,14 +108,23 @@ func CreatePaymentHandler(nc *nats.Conn) fiber.Handler {
 
 func PaymentSummaryHandler(store storage.PaymentStore) fiber.Handler {
 	return func(c fiber.Ctx) error {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
 		fromStr := c.Query("from")
 		toStr := c.Query("to")
+
+		if fromStr == "" || toStr == "" {
+			return c.Status(http.StatusBadRequest).JSON(fiber.Map{
+				"error": "from and to query parameters are required",
+			})
+		}
 
 		from, err := time.Parse(time.RFC3339, fromStr)
 		if err != nil {
 			log.Printf("failed to parse start date: %s", err)
 			return c.Status(http.StatusBadRequest).JSON(fiber.Map{
-				"error": "failed to parse start date",
+				"error": "failed to parse start date, use RFC3339 format",
 			})
 		}
 
@@ -84,16 +132,29 @@ func PaymentSummaryHandler(store storage.PaymentStore) fiber.Handler {
 		if err != nil {
 			log.Printf("failed to parse end date: %s", err)
 			return c.Status(http.StatusBadRequest).JSON(fiber.Map{
-				"error": "failed to parse end date",
+				"error": "failed to parse end date, use RFC3339 format",
+			})
+		}
+
+		if to.Before(from) {
+			return c.Status(http.StatusBadRequest).JSON(fiber.Map{
+				"error": "to date must be after from date",
 			})
 		}
 
 		summary, err := store.GetPaymentSummary(from, to)
 		if err != nil {
-			log.Printf("failed to get payment summary: %s", err)
-			return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
-				"error": "failed to get payment summary",
-			})
+			select {
+			case <-ctx.Done():
+				return c.Status(http.StatusRequestTimeout).JSON(fiber.Map{
+					"error": "request timeout",
+				})
+			default:
+				log.Printf("failed to get payment summary: %s", err)
+				return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
+					"error": "failed to get payment summary",
+				})
+			}
 		}
 
 		response := PaymentResponse{
