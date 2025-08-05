@@ -13,16 +13,12 @@ import (
 	"github.com/Fuerback/rinha-2025/internal/storage"
 	"github.com/Fuerback/rinha-2025/internal/worker"
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
-	"github.com/nats-io/nats.go"
 )
 
 func main() {
 	app := fiber.New()
-
-	app.Use(logger.New())
 
 	_ = godotenv.Load()
 
@@ -51,34 +47,14 @@ func main() {
 		log.Fatal("failed to connect to database", "error", err)
 	}
 
-	nc, err := nats.Connect(os.Getenv("NATS_URL"),
-		nats.MaxReconnects(10),
-		nats.ReconnectWait(2*time.Second),
-		nats.ReconnectJitter(500*time.Millisecond, 2*time.Second),
-		nats.Timeout(5*time.Second),
-		nats.PingInterval(30*time.Second),
-		nats.MaxPingsOutstanding(3),
-		nats.ReconnectBufSize(8*1024*1024), // 8MB buffer
-		nats.SyncQueueLen(1024),            // Larger subscription channel
-		nats.ReconnectHandler(func(nc *nats.Conn) {
-			log.Printf("Reconnected to NATS server: %v", nc.ConnectedUrl())
-		}),
-		nats.DisconnectErrHandler(func(nc *nats.Conn, err error) {
-			log.Printf("NATS disconnected: %v", err)
-		}),
-	)
-	if err != nil {
-		log.Fatal("failed to connect to nats", "error", err)
-	}
-	defer nc.Drain()
-
-	paymentWorker := worker.NewPaymentProcessorWorker(paymentStorage, nc)
+	paymentWorker := worker.NewPaymentProcessorWorker(paymentStorage)
 	go paymentWorker.Start()
 
-	app.Post("/payments", handler.CreatePaymentHandler(nc))
+	app.Post("/payments", handler.CreatePaymentHandler(paymentWorker))
 	app.Get("/payments-summary", handler.PaymentSummaryHandler(paymentStorage))
 
 	if err := app.Listen(":8080"); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		slog.Error("failed to start server", "error", err)
+		paymentWorker.Stop()
 	}
 }

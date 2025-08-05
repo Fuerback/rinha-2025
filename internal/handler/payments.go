@@ -1,27 +1,16 @@
 package handler
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"log"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/Fuerback/rinha-2025/internal/model"
 	"github.com/Fuerback/rinha-2025/internal/storage"
+	"github.com/Fuerback/rinha-2025/internal/worker"
 	"github.com/gofiber/fiber/v3"
-	"github.com/nats-io/nats.go"
 	"github.com/shopspring/decimal"
-)
-
-var (
-	bufferPool = sync.Pool{
-		New: func() interface{} {
-			return &bytes.Buffer{}
-		},
-	}
 )
 
 type PaymentRequest struct {
@@ -39,7 +28,7 @@ type PaymentSummaryResponse struct {
 	TotalAmount   decimal.Decimal `json:"totalAmount"`
 }
 
-func CreatePaymentHandler(nc *nats.Conn) fiber.Handler {
+func CreatePaymentHandler(paymentWorker *worker.PaymentProcessorWorker) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		var req PaymentRequest
 		if err := c.Bind().Body(&req); err != nil {
@@ -61,43 +50,12 @@ func CreatePaymentHandler(nc *nats.Conn) fiber.Handler {
 			})
 		}
 
-		paymentEvent := model.PaymentEvent{
-			CorrelationID: req.CorrelationID,
-			Amount:        req.Amount,
-			RequestedAt:   time.Now(),
-		}
-
-		buf := bufferPool.Get().(*bytes.Buffer)
-		buf.Reset()
-		defer bufferPool.Put(buf)
-
-		encoder := json.NewEncoder(buf)
-		if err := encoder.Encode(paymentEvent); err != nil {
-			log.Printf("failed to marshal payment event: %s", err)
-			return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
-				"error": "failed to marshal payment event",
-			})
-		}
-
-		jsonPaymentEvent := buf.Bytes()
-
 		go func() {
-			publishCtx, publishCancel := context.WithTimeout(context.Background(), 2*time.Second)
-			defer publishCancel()
-
-			done := make(chan error, 1)
-			go func() {
-				done <- nc.Publish("payment", jsonPaymentEvent)
-			}()
-
-			select {
-			case err := <-done:
-				if err != nil {
-					log.Printf("failed to publish payment event: %s", err)
-				}
-			case <-publishCtx.Done():
-				log.Printf("publish timeout for correlation_id: %s", req.CorrelationID)
-			}
+			paymentWorker.AddMessage(&model.PaymentEvent{
+				CorrelationID: req.CorrelationID,
+				Amount:        req.Amount,
+				RequestedAt:   time.Now(),
+			})
 		}()
 
 		return c.Status(http.StatusCreated).JSON(fiber.Map{

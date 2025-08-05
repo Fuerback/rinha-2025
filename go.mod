@@ -7,10 +7,7 @@ require (
 	github.com/shopspring/decimal v1.4.0
 )
 
-require (
-	github.com/gofiber/fiber/v3 v3.0.0-beta.5
-	github.com/nats-io/nats.go v1.44.0
-)
+require github.com/gofiber/fiber/v3 v3.0.0-beta.5
 
 require (
 	github.com/andybalholm/brotli v1.2.0 // indirect
@@ -18,8 +15,6 @@ require (
 	github.com/gofiber/utils/v2 v2.0.0-beta.13 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
-	github.com/nats-io/nkeys v0.4.11 // indirect
-	github.com/nats-io/nuid v1.0.1 // indirect
 	github.com/philhofer/fwd v1.2.0 // indirect
 	github.com/tinylib/msgp v1.3.0 // indirect
 	github.com/valyala/fasthttp v1.64.0 // indirect
