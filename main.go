@@ -50,7 +50,6 @@ func main() {
 	paymentWorker := worker.NewPaymentProcessorWorker(paymentStorage)
 	go paymentWorker.Start()
 
-	// Start health check worker
 	healthCheckWorker := worker.NewHealthCheckWorker(paymentStorage)
 	go healthCheckWorker.Start()
 

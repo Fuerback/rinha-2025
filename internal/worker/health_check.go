@@ -104,18 +104,23 @@ func (h *HealthCheckWorker) performHealthCheck() {
 
 	// Determine the best processor
 	var bestProcessor int
+	var minResponseTime int
 	if isDefaultHealthy && isFallbackHealthy {
 		if defaultHealthCheckResp.MinResponseTime < fallbackHealthCheckResp.MinResponseTime {
 			bestProcessor = 0
+			minResponseTime = defaultHealthCheckResp.MinResponseTime
 		} else {
 			bestProcessor = 1
+			minResponseTime = fallbackHealthCheckResp.MinResponseTime
 		}
 	} else if isDefaultHealthy {
 		// Only default is healthy
 		bestProcessor = 0
+		minResponseTime = defaultHealthCheckResp.MinResponseTime
 	} else if isFallbackHealthy {
 		// Only fallback is healthy
 		bestProcessor = 1
+		minResponseTime = fallbackHealthCheckResp.MinResponseTime
 	} else {
 		// Neither is healthy, keep current preference
 		slog.Warn("Neither processor is healthy")
@@ -124,7 +129,7 @@ func (h *HealthCheckWorker) performHealthCheck() {
 
 	if bestProcessor != currentHealthCheckResp.PreferredProcessor {
 		// Update health check with the best processor
-		err = h.store.UpdateHealthCheck(bestProcessor)
+		err = h.store.UpdateHealthCheck(bestProcessor, minResponseTime)
 		if err != nil {
 			slog.Error("Failed to update health check", "error", err, "bestProcessor", bestProcessor)
 			return

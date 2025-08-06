@@ -140,7 +140,7 @@ func (w *PaymentProcessorWorker) retryWorker() {
 				return
 			}
 			// Add delay for retry
-			time.Sleep(1000 * time.Millisecond)
+			time.Sleep(500 * time.Millisecond)
 			w.processMessage(msg)
 		case <-w.ctx.Done():
 			return

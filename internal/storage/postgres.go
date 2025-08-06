@@ -47,7 +47,7 @@ ORDER BY payment_processor`)
 		return nil, err
 	}
 
-	storage.updateHealthCheckStmt, err = db.Prepare("UPDATE health_check SET preferred_processor = $1, last_checked_at = $2")
+	storage.updateHealthCheckStmt, err = db.Prepare("UPDATE health_check SET preferred_processor = $1, min_response_time= $2, last_checked_at = $3")
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +124,7 @@ func (s *PaymentPostgresStorage) GetHealthCheck() (model.HealthCheck, error) {
 	defer cancel()
 
 	var healthCheck model.HealthCheck
-	err := s.getHealthCheckStmt.QueryRowContext(ctx).Scan(&healthCheck.PreferredProcessor, &healthCheck.LastCheckedAt)
+	err := s.getHealthCheckStmt.QueryRowContext(ctx).Scan(&healthCheck.PreferredProcessor, &healthCheck.MinResponseTime, &healthCheck.LastCheckedAt)
 	if err != nil {
 		return model.HealthCheck{}, err
 	}
@@ -132,11 +132,11 @@ func (s *PaymentPostgresStorage) GetHealthCheck() (model.HealthCheck, error) {
 	return healthCheck, nil
 }
 
-func (s *PaymentPostgresStorage) UpdateHealthCheck(preferredProcessor int) error {
+func (s *PaymentPostgresStorage) UpdateHealthCheck(preferredProcessor, minResponseTime int) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	_, err := s.updateHealthCheckStmt.ExecContext(ctx, preferredProcessor, time.Now())
+	_, err := s.updateHealthCheckStmt.ExecContext(ctx, preferredProcessor, minResponseTime, time.Now())
 	if err != nil {
 		return err
 	}
