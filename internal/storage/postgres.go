@@ -16,6 +16,8 @@ type PaymentPostgresStorage struct {
 	db                    *sql.DB
 	insertPaymentStmt     *sql.Stmt
 	getPaymentSummaryStmt *sql.Stmt
+	getHealthCheckStmt    *sql.Stmt
+	updateHealthCheckStmt *sql.Stmt
 }
 
 func NewPaymentPostgresStorage(db *sql.DB) (*PaymentPostgresStorage, error) {
@@ -36,6 +38,16 @@ FROM payments
 WHERE requested_at BETWEEN $1 AND $2
 GROUP BY payment_processor
 ORDER BY payment_processor`)
+	if err != nil {
+		return nil, err
+	}
+
+	storage.getHealthCheckStmt, err = db.Prepare("SELECT * FROM health_check limit 1")
+	if err != nil {
+		return nil, err
+	}
+
+	storage.updateHealthCheckStmt, err = db.Prepare("UPDATE health_check SET preferred_processor = $1")
 	if err != nil {
 		return nil, err
 	}
@@ -105,6 +117,30 @@ func (s *PaymentPostgresStorage) GetPaymentSummary(from time.Time, to time.Time)
 	}
 
 	return summary, nil
+}
+
+func (s *PaymentPostgresStorage) GetHealthCheck() (model.HealthCheck, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	var healthCheck model.HealthCheck
+	err := s.getHealthCheckStmt.QueryRowContext(ctx).Scan(&healthCheck.PreferredProcessor, &healthCheck.LastCheckedAt)
+	if err != nil {
+		return model.HealthCheck{}, err
+	}
+
+	return healthCheck, nil
+}
+
+func (s *PaymentPostgresStorage) UpdateHealthCheck(preferredProcessor int) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	_, err := s.updateHealthCheckStmt.ExecContext(ctx, preferredProcessor)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *PaymentPostgresStorage) Close() error {

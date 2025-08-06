@@ -50,11 +50,16 @@ func main() {
 	paymentWorker := worker.NewPaymentProcessorWorker(paymentStorage)
 	go paymentWorker.Start()
 
+	// Start health check worker
+	healthCheckWorker := worker.NewHealthCheckWorker(paymentStorage)
+	go healthCheckWorker.Start()
+
 	app.Post("/payments", handler.CreatePaymentHandler(paymentWorker))
 	app.Get("/payments-summary", handler.PaymentSummaryHandler(paymentStorage))
 
 	if err := app.Listen(":8080"); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		slog.Error("failed to start server", "error", err)
 		paymentWorker.Stop()
+		healthCheckWorker.Stop()
 	}
 }

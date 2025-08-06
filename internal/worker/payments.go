@@ -152,20 +152,47 @@ func (w *PaymentProcessorWorker) processMessage(msg *model.PaymentEvent) {
 		RequestedAt:   msg.RequestedAt,
 	}
 
-	paymentProcessor := model.PaymentProcessorDefault
-	err := w.SendToProcessor(w.defaultProcessorURL, body)
+	// paymentProcessor := model.PaymentProcessorDefault
+	// err := w.SendToProcessor(w.defaultProcessorURL, body)
+	// if err != nil {
+	// 	log.Printf("Error processing payment with default processor: %s", err)
+	// 	paymentProcessor = model.PaymentProcessorFallback
+	// 	err = w.SendToProcessor(w.fallbackProcessorURL, body)
+	// 	if err != nil {
+	// 		log.Printf("Error processing payment with fallback processor: %s", err)
+	// 		w.retryPayment(msg)
+	// 		return
+	// 	}
+	// }
+
+	paymentProcessorResp, err := w.store.GetHealthCheck()
 	if err != nil {
-		log.Printf("Error processing payment with default processor: %s", err)
-		paymentProcessor = model.PaymentProcessorFallback
-		err = w.SendToProcessor(w.fallbackProcessorURL, body)
+		log.Printf("Error getting health check: %s", err)
+		w.retryPayment(msg)
+		return
+	}
+
+	// todo: ainda pode haver pagamentos duplicados por conta do timeout
+	switch paymentProcessorResp.PreferredProcessor {
+	case 0:
+		err := w.SendToProcessor(w.defaultProcessorURL, body)
+		if err != nil {
+			log.Printf("Error processing payment with default processor: %s", err)
+			w.retryPayment(msg)
+			return
+		}
+	case 1:
+		err := w.SendToProcessor(w.fallbackProcessorURL, body)
 		if err != nil {
 			log.Printf("Error processing payment with fallback processor: %s", err)
 			w.retryPayment(msg)
 			return
 		}
+	default:
+		w.retryPayment(msg)
 	}
 
-	err = w.store.CreatePayment(model.NewPayment(msg.CorrelationID, msg.Amount, msg.RequestedAt, paymentProcessor))
+	err = w.store.CreatePayment(model.NewPayment(msg.CorrelationID, msg.Amount, msg.RequestedAt, model.PaymentProcessorTranslationMap[paymentProcessorResp.PreferredProcessor]))
 	if err != nil {
 		if err == storage.ErrUniqueViolation {
 			log.Println("Payment already exists")
@@ -181,10 +208,10 @@ func (w *PaymentProcessorWorker) SendToProcessor(url string, body requestBody) e
 		return err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 900*time.Millisecond)
-	defer cancel()
+	// ctx, cancel := context.WithTimeout(context.Background(), 900*time.Millisecond)
+	// defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, "POST", url+"/payments", bytes.NewBuffer(jsonBody))
+	req, err := http.NewRequest("POST", url+"/payments", bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %s", err)
 	}

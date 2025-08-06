@@ -7,3 +7,11 @@ CREATE TABLE payments (
 
 CREATE INDEX idx_payments_requested_at ON payments (requested_at);
 CREATE INDEX idx_payments_requested_at_processor ON payments (requested_at, payment_processor);
+
+
+CREATE UNLOGGED TABLE health_check (
+    preferred_processor SMALLINT NOT NULL DEFAULT 0,
+    last_checked_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO health_check (preferred_processor) VALUES (0);

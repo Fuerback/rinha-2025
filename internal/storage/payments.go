@@ -10,6 +10,8 @@ import (
 type PaymentStore interface {
 	CreatePayment(payment *model.Payment) error
 	GetPaymentSummary(from time.Time, to time.Time) (model.PaymentSummary, error)
+	GetHealthCheck() (model.HealthCheck, error)
+	UpdateHealthCheck(preferredProcessor int) error
 }
 
 func decimalToInt64(d decimal.Decimal) int64 {
