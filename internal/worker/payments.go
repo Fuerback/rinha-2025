@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -35,15 +37,17 @@ type PaymentProcessorWorker struct {
 	wg                   sync.WaitGroup
 }
 
+var errExternalClientTimeout = errors.New("external client timeout")
+
 func NewPaymentProcessorWorker(store storage.PaymentStore) *PaymentProcessorWorker {
-	clientTimeoutStr := os.Getenv("CLIENT_TIMEOUT")
-	if clientTimeoutStr == "" {
-		clientTimeoutStr = "500"
-	}
-	clientTimeout, err := strconv.Atoi(clientTimeoutStr)
-	if err != nil {
-		log.Fatal("failed to parse client timeout", "error", err)
-	}
+	// clientTimeoutStr := os.Getenv("CLIENT_TIMEOUT")
+	// if clientTimeoutStr == "" {
+	// 	clientTimeoutStr = "500"
+	// }
+	// clientTimeout, err := strconv.Atoi(clientTimeoutStr)
+	// if err != nil {
+	// 	log.Fatal("failed to parse client timeout", "error", err)
+	// }
 
 	workers := os.Getenv("WORKERS")
 	if workers == "" {
@@ -55,11 +59,19 @@ func NewPaymentProcessorWorker(store storage.PaymentStore) *PaymentProcessorWork
 	}
 
 	transport := &http.Transport{
-		MaxIdleConns:        100,
-		MaxIdleConnsPerHost: 50,
+		MaxIdleConns:        2000, // Increase for high concurrency
+		MaxIdleConnsPerHost: 2000, // Increase for high concurrency
 		IdleConnTimeout:     90 * time.Second,
-		DisableCompression:  true,
 		DisableKeepAlives:   false,
+		DialContext: (&net.Dialer{
+			Timeout:   5 * time.Second,  // Lower timeout for faster failover
+			KeepAlive: 60 * time.Second, // Longer keepalive for connection reuse
+		}).DialContext,
+		// Optional: tune TLSHandshakeTimeout, ExpectContinueTimeout, etc.
+	}
+	client := &http.Client{
+		Transport: transport,
+		Timeout:   5 * time.Second, // Lower timeout for faster error returns
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -73,10 +85,7 @@ func NewPaymentProcessorWorker(store storage.PaymentStore) *PaymentProcessorWork
 		retryChan:            make(chan *model.PaymentEvent, 10000),
 		ctx:                  ctx,
 		cancel:               cancel,
-		client: &http.Client{
-			Timeout:   time.Duration(clientTimeout) * time.Millisecond,
-			Transport: transport,
-		},
+		client:               client,
 	}
 }
 
@@ -153,16 +162,30 @@ func (w *PaymentProcessorWorker) processMessage(msg *model.PaymentEvent) {
 	}
 
 	paymentProcessor := model.PaymentProcessorDefault
-	err := w.SendToProcessor(w.defaultProcessorURL, body)
+	err := w.SendToProcessor(w.defaultProcessorURL, msg, body)
 	if err != nil {
+		if errors.Is(err, errExternalClientTimeout) && msg.PreferredProcessor == "" {
+			msg.PreferredProcessor = model.PaymentProcessorDefault
+			w.retryPayment(msg)
+			return
+		}
 		log.Printf("Error processing payment with default processor: %s", err)
 		paymentProcessor = model.PaymentProcessorFallback
-		err = w.SendToProcessor(w.fallbackProcessorURL, body)
+		err = w.SendToProcessor(w.fallbackProcessorURL, msg, body)
 		if err != nil {
+			if errors.Is(err, errExternalClientTimeout) && msg.PreferredProcessor == "" {
+				msg.PreferredProcessor = model.PaymentProcessorFallback
+				w.retryPayment(msg)
+				return
+			}
 			log.Printf("Error processing payment with fallback processor: %s", err)
 			w.retryPayment(msg)
 			return
 		}
+	}
+
+	if msg.PreferredProcessor != "" {
+		paymentProcessor = msg.PreferredProcessor
 	}
 
 	err = w.store.CreatePayment(model.NewPayment(msg.CorrelationID, msg.Amount, msg.RequestedAt, paymentProcessor))
@@ -175,13 +198,36 @@ func (w *PaymentProcessorWorker) processMessage(msg *model.PaymentEvent) {
 	}
 }
 
-func (w *PaymentProcessorWorker) SendToProcessor(url string, body requestBody) error {
+func (w *PaymentProcessorWorker) SendToProcessor(url string, msg *model.PaymentEvent, body requestBody) error {
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 900*time.Millisecond)
+	if msg.PreferredProcessor != "" {
+		resp, err := w.client.Get(url + "/payments/" + body.CorrelationID)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == http.StatusOK {
+			log.Printf("Payment already processed: %s", body.CorrelationID)
+			return nil
+		} else if resp.StatusCode == http.StatusNotFound {
+			log.Printf("Payment not found: %s", body.CorrelationID)
+			msg.PreferredProcessor = ""
+		} else {
+			log.Printf("Using preferred processor for correlationId: %s, preferredProcessor: %s", body.CorrelationID, msg.PreferredProcessor)
+			if msg.PreferredProcessor == model.PaymentProcessorDefault {
+				url = w.defaultProcessorURL
+			} else {
+				url = w.fallbackProcessorURL
+			}
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, "POST", url+"/payments", bytes.NewBuffer(jsonBody))
@@ -192,12 +238,18 @@ func (w *PaymentProcessorWorker) SendToProcessor(url string, body requestBody) e
 
 	resp, err := w.client.Do(req)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return errExternalClientTimeout
+		} else if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			return errExternalClientTimeout
+		}
 		return fmt.Errorf("failed to process payment: %s", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		if resp.StatusCode == http.StatusUnprocessableEntity {
+			log.Printf("processor returned unprocessable entity status: %d, correlationId: %s", resp.StatusCode, body.CorrelationID)
 			return nil
 		}
 		return fmt.Errorf("processor returned non-OK status: %d", resp.StatusCode)

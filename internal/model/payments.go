@@ -14,10 +14,11 @@ type Payment struct {
 }
 
 type PaymentEvent struct {
-	CorrelationID string
-	Amount        decimal.Decimal
-	RequestedAt   time.Time
-	RetryCount    uint
+	CorrelationID      string
+	Amount             decimal.Decimal
+	RequestedAt        time.Time
+	RetryCount         uint
+	PreferredProcessor PaymentProcessor
 }
 
 type PaymentSummary struct {
