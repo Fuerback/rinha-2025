@@ -32,9 +32,17 @@ type healthCheckResponse struct {
 var errHealthCheckFailedTooManyRequests = errors.New("health check failed with too many requests")
 
 func NewHealthCheckWorker(store storage.PaymentStore) *HealthCheckWorker {
+	transport := &http.Transport{
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 50,
+		IdleConnTimeout:     90 * time.Second,
+		DisableCompression:  true,
+		DisableKeepAlives:   false,
+	}
+
 	return &HealthCheckWorker{
 		store:                store,
-		client:               &http.Client{Timeout: 3 * time.Second},
+		client:               &http.Client{Timeout: 5 * time.Second, Transport: transport},
 		defaultProcessorURL:  os.Getenv("PROCESSOR_DEFAULT_URL"),
 		fallbackProcessorURL: os.Getenv("PROCESSOR_FALLBACK_URL"),
 	}
@@ -44,7 +52,6 @@ func (h *HealthCheckWorker) Start() {
 	h.ctx, h.cancel = context.WithCancel(context.Background())
 	h.wg.Add(1)
 	go h.runHealthCheckLoop()
-	slog.Info("Health check worker started")
 }
 
 func (h *HealthCheckWorker) Stop() {
@@ -52,7 +59,6 @@ func (h *HealthCheckWorker) Stop() {
 		h.cancel()
 	}
 	h.wg.Wait()
-	slog.Info("Health check worker stopped")
 }
 
 func (h *HealthCheckWorker) runHealthCheckLoop() {
@@ -81,7 +87,6 @@ func (h *HealthCheckWorker) performHealthCheck() {
 	// Check if LastCheckedAt was 5 seconds ago or before
 	now := time.Now()
 	if now.Sub(currentHealthCheckResp.LastCheckedAt) <= 5*time.Second {
-		slog.Debug("Health check was performed recently, skipping", "lastChecked", currentHealthCheckResp.LastCheckedAt)
 		return
 	}
 
@@ -90,7 +95,7 @@ func (h *HealthCheckWorker) performHealthCheck() {
 	fallbackHealthCheckResp, errFallback := h.checkProcessorHealth(h.fallbackProcessorURL)
 
 	if errDefault != nil && errFallback != nil {
-		slog.Error("Failed to check processor health", "errorDefault", errDefault, "errorFallback", errFallback)
+		//slog.Error("Failed to check processor health", "errorDefault", errDefault, "errorFallback", errFallback)
 		return
 	}
 
@@ -105,19 +110,16 @@ func (h *HealthCheckWorker) performHealthCheck() {
 		} else {
 			bestProcessor = 1
 		}
-		slog.Info("Both processors are healthy, using default")
 	} else if isDefaultHealthy {
 		// Only default is healthy
 		bestProcessor = 0
-		slog.Info("Only default processor is healthy")
 	} else if isFallbackHealthy {
 		// Only fallback is healthy
 		bestProcessor = 1
-		slog.Info("Only fallback processor is healthy")
 	} else {
 		// Neither is healthy, keep current preference
+		slog.Warn("Neither processor is healthy")
 		bestProcessor = -1
-		slog.Warn("Neither processor is healthy", "current", bestProcessor)
 	}
 
 	if bestProcessor != currentHealthCheckResp.PreferredProcessor {
@@ -128,29 +130,17 @@ func (h *HealthCheckWorker) performHealthCheck() {
 			return
 		}
 	}
-
-	slog.Info("Health check completed",
-		"bestProcessor", bestProcessor,
-		"isDefaultHealthy", isDefaultHealthy,
-		"isFallbackHealthy", isFallbackHealthy)
 }
 
 func (h *HealthCheckWorker) checkProcessorHealth(processorURL string) (healthCheckResponse, error) {
-	if processorURL == "" {
-		slog.Warn("Processor URL is empty")
-		return healthCheckResponse{}, fmt.Errorf("processor URL is empty")
-	}
-
 	healthURL := processorURL + "/payments/service-health"
 	req, err := http.NewRequest("GET", healthURL, nil)
 	if err != nil {
-		slog.Error("Failed to create health check request", "url", healthURL, "error", err)
 		return healthCheckResponse{}, fmt.Errorf("failed to create health check request: %s", err)
 	}
 
 	resp, err := h.client.Do(req)
 	if err != nil {
-		slog.Error("Health check request failed", "url", healthURL, "error", err)
 		return healthCheckResponse{}, fmt.Errorf("health check request failed: %s", err)
 	}
 	defer resp.Body.Close()
@@ -158,7 +148,6 @@ func (h *HealthCheckWorker) checkProcessorHealth(processorURL string) (healthChe
 	if resp.StatusCode == http.StatusOK {
 		var healthCheckResp healthCheckResponse
 		if err := json.NewDecoder(resp.Body).Decode(&healthCheckResp); err != nil {
-			slog.Error("Failed to decode health check response", "url", healthURL, "error", err)
 			return healthCheckResponse{}, fmt.Errorf("failed to decode health check response: %s", err)
 		}
 

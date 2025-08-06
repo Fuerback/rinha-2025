@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -34,6 +35,8 @@ type PaymentProcessorWorker struct {
 	cancel               context.CancelFunc
 	wg                   sync.WaitGroup
 }
+
+var errDeadlineExceeded = errors.New("deadline exceeded")
 
 func NewPaymentProcessorWorker(store storage.PaymentStore) *PaymentProcessorWorker {
 	clientTimeoutStr := os.Getenv("CLIENT_TIMEOUT")
@@ -152,19 +155,6 @@ func (w *PaymentProcessorWorker) processMessage(msg *model.PaymentEvent) {
 		RequestedAt:   msg.RequestedAt,
 	}
 
-	// paymentProcessor := model.PaymentProcessorDefault
-	// err := w.SendToProcessor(w.defaultProcessorURL, body)
-	// if err != nil {
-	// 	log.Printf("Error processing payment with default processor: %s", err)
-	// 	paymentProcessor = model.PaymentProcessorFallback
-	// 	err = w.SendToProcessor(w.fallbackProcessorURL, body)
-	// 	if err != nil {
-	// 		log.Printf("Error processing payment with fallback processor: %s", err)
-	// 		w.retryPayment(msg)
-	// 		return
-	// 	}
-	// }
-
 	paymentProcessorResp, err := w.store.GetHealthCheck()
 	if err != nil {
 		log.Printf("Error getting health check: %s", err)
@@ -172,18 +162,23 @@ func (w *PaymentProcessorWorker) processMessage(msg *model.PaymentEvent) {
 		return
 	}
 
-	// todo: ainda pode haver pagamentos duplicados por conta do timeout
 	switch paymentProcessorResp.PreferredProcessor {
 	case 0:
-		err := w.SendToProcessor(w.defaultProcessorURL, body)
+		err := w.SendToProcessor(w.defaultProcessorURL, body, msg)
 		if err != nil {
+			if errors.Is(err, errDeadlineExceeded) {
+				msg.PreferredProcessor = model.PaymentProcessorDefault
+			}
 			log.Printf("Error processing payment with default processor: %s", err)
 			w.retryPayment(msg)
 			return
 		}
 	case 1:
-		err := w.SendToProcessor(w.fallbackProcessorURL, body)
+		err := w.SendToProcessor(w.fallbackProcessorURL, body, msg)
 		if err != nil {
+			if errors.Is(err, errDeadlineExceeded) {
+				msg.PreferredProcessor = model.PaymentProcessorFallback
+			}
 			log.Printf("Error processing payment with fallback processor: %s", err)
 			w.retryPayment(msg)
 			return
@@ -202,14 +197,19 @@ func (w *PaymentProcessorWorker) processMessage(msg *model.PaymentEvent) {
 	}
 }
 
-func (w *PaymentProcessorWorker) SendToProcessor(url string, body requestBody) error {
+func (w *PaymentProcessorWorker) SendToProcessor(url string, body requestBody, msg *model.PaymentEvent) error {
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return err
 	}
 
-	// ctx, cancel := context.WithTimeout(context.Background(), 900*time.Millisecond)
-	// defer cancel()
+	if msg.PreferredProcessor != "" {
+		if msg.PreferredProcessor == model.PaymentProcessorDefault {
+			url = w.defaultProcessorURL
+		} else {
+			url = w.fallbackProcessorURL
+		}
+	}
 
 	req, err := http.NewRequest("POST", url+"/payments", bytes.NewBuffer(jsonBody))
 	if err != nil {
@@ -219,14 +219,18 @@ func (w *PaymentProcessorWorker) SendToProcessor(url string, body requestBody) e
 
 	resp, err := w.client.Do(req)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return errDeadlineExceeded
+		}
 		return fmt.Errorf("failed to process payment: %s", err)
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusUnprocessableEntity {
+		return nil
+	}
+
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		if resp.StatusCode == http.StatusUnprocessableEntity {
-			return nil
-		}
 		return fmt.Errorf("processor returned non-OK status: %d", resp.StatusCode)
 	}
 

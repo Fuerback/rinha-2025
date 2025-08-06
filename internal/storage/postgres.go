@@ -47,7 +47,7 @@ ORDER BY payment_processor`)
 		return nil, err
 	}
 
-	storage.updateHealthCheckStmt, err = db.Prepare("UPDATE health_check SET preferred_processor = $1")
+	storage.updateHealthCheckStmt, err = db.Prepare("UPDATE health_check SET preferred_processor = $1, last_checked_at = $2")
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +136,7 @@ func (s *PaymentPostgresStorage) UpdateHealthCheck(preferredProcessor int) error
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	_, err := s.updateHealthCheckStmt.ExecContext(ctx, preferredProcessor)
+	_, err := s.updateHealthCheckStmt.ExecContext(ctx, preferredProcessor, time.Now())
 	if err != nil {
 		return err
 	}
