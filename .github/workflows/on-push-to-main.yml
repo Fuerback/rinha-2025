@@ -49,6 +49,9 @@ jobs:
           TAG=$(git describe --tags --abbrev=0)
           echo "tag=$TAG" >> $GITHUB_OUTPUT
 
+      - name: Set lowercase repository owner
+        run: echo "REPO_OWNER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
       - name: Build and push Docker images
         uses: docker/build-push-action@v5.1.0
         with:
@@ -58,5 +61,5 @@ jobs:
           target: prod
           platforms: linux/amd64,linux/arm64
           tags: |
-            ghcr.io/${{ github.repository_owner }}/rinha-2025-go:${{ steps.get_tag.outputs.tag }}
-            ghcr.io/${{ github.repository_owner }}/rinha-2025-go:latest
+            ghcr.io/${{ env.REPO_OWNER }}/rinha-2025-go:${{ steps.get_tag.outputs.tag }}
+            ghcr.io/${{ env.REPO_OWNER }}/rinha-2025-go:latest
