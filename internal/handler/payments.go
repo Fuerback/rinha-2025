@@ -129,3 +129,16 @@ func PaymentSummaryHandler(store storage.PaymentStore) fiber.Handler {
 		return c.Status(http.StatusOK).JSON(response)
 	}
 }
+
+func HealthCheckHandler(store storage.PaymentStore) fiber.Handler {
+	return func(c fiber.Ctx) error {
+		healthCheck, err := store.GetHealthCheck()
+		if err != nil {
+			return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
+				"error": "failed to get health check",
+			})
+		}
+
+		return c.Status(http.StatusOK).JSON(healthCheck)
+	}
+}

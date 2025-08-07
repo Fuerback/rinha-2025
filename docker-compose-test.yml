@@ -2,7 +2,9 @@ version: '3.8'
 
 services:
   app1: &app
-    image: ghcr.io/fuerback/rinha-2025-go:v1.1.0
+    build:
+      context: .
+      dockerfile: Dockerfile
     hostname: app1
     networks:
       - backend
