@@ -72,26 +72,29 @@ func PaymentSummaryHandler(store storage.PaymentStore) fiber.Handler {
 		fromStr := c.Query("from")
 		toStr := c.Query("to")
 
-		if fromStr == "" || toStr == "" {
-			return c.Status(http.StatusBadRequest).JSON(fiber.Map{
-				"error": "from and to query parameters are required",
-			})
+		from := time.Now().AddDate(-1, 0, 0)
+		to := time.Now()
+
+		if fromStr != "" {
+			var err error
+			from, err = time.Parse(time.RFC3339, fromStr)
+			if err != nil {
+				log.Printf("failed to parse start date: %s", err)
+				return c.Status(http.StatusBadRequest).JSON(fiber.Map{
+					"error": "failed to parse start date, use RFC3339 format",
+				})
+			}
 		}
 
-		from, err := time.Parse(time.RFC3339, fromStr)
-		if err != nil {
-			log.Printf("failed to parse start date: %s", err)
-			return c.Status(http.StatusBadRequest).JSON(fiber.Map{
-				"error": "failed to parse start date, use RFC3339 format",
-			})
-		}
-
-		to, err := time.Parse(time.RFC3339, toStr)
-		if err != nil {
-			log.Printf("failed to parse end date: %s", err)
-			return c.Status(http.StatusBadRequest).JSON(fiber.Map{
-				"error": "failed to parse end date, use RFC3339 format",
-			})
+		if toStr != "" {
+			var err error
+			to, err = time.Parse(time.RFC3339, toStr)
+			if err != nil {
+				log.Printf("failed to parse end date: %s", err)
+				return c.Status(http.StatusBadRequest).JSON(fiber.Map{
+					"error": "failed to parse end date, use RFC3339 format",
+				})
+			}
 		}
 
 		if to.Before(from) {
